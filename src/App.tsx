@@ -550,31 +550,47 @@ export default function App() {
     saveVisitasToStorage(updatedVisitas);
 
     // Check off scheduled planning if associated
-    if (associatedPlanoId) {
-      const updatedPlanos = planos.map((p) =>
-        p.id === associatedPlanoId ? { ...p, concluido: true } : p
-      );
-      savePlanosToStorage(updatedPlanos);
-    }
+    const basePlanos = associatedPlanoId
+      ? planos.map((p) => (p.id === associatedPlanoId ? { ...p, concluido: true } : p))
+      : planos;
 
-    // Configure return visit settings (15 days later)
-    setReturnLojaId(selectedLojaForVisita.id);
-    setReturnUsuario(currentUser?.nome || 'Supervisor');
-    
+    // Automatically calculate future revisit date (periodicity)
+    const prazoDias = selectedLojaForVisita.prazo || config.prazoPadrao || 15;
+    let dataRevisita = todayISO();
     try {
       const baseDate = new Date(vData + 'T12:00:00');
-      baseDate.setDate(baseDate.getDate() + 15);
-      const fifteenDaysLater = baseDate.toISOString().split('T')[0];
-      setReturnData(fifteenDaysLater);
+      baseDate.setDate(baseDate.getDate() + prazoDias);
+      dataRevisita = baseDate.toISOString().split('T')[0];
     } catch (e) {
-      setReturnData(todayISO());
+      const baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() + prazoDias);
+      dataRevisita = baseDate.toISOString().split('T')[0];
     }
-    setReturnObs('Retorno preventivo (15 dias).');
 
-    // Close registration modal and open return booking modal
+    // Create automatic Revisita Pendente
+    const newRevisita: Revisita = {
+      id: `revisita_${Date.now()}`,
+      visitaOriginalId: newVisita.id,
+      lojaId: selectedLojaForVisita.id,
+      usuario: usuarioStr,
+      dataPlanejada: dataRevisita,
+      concluida: false,
+      pontosMelhoria: vPendencias.map((p) => ({
+        descricao: p,
+        corrigido: false,
+      })),
+      observacoesOriginais: vComentario.trim() || 'Visita concluída.',
+      temFotos: false,
+    };
+
+    saveRevisitasToStorage([...revisitas, newRevisita]);
+    savePlanosToStorage(basePlanos);
+
+    // Close registration modal
     setVisitaFormOpen(false);
-    setReturnModalOpen(true);
-    triggerToast('Relatório de visita gravado!');
+    setRelatoriosActiveTab('realizadas');
+    navigateTo('relatorios');
+    triggerToast('Relatório de visita gravado e revisita agendada automaticamente!');
   };
 
   const handleSaveReturnPlano = () => {
@@ -660,30 +676,29 @@ export default function App() {
   const handleSaveRevisitaExecution = () => {
     if (!selectedRevisita) return;
 
-    const updatedRevisitas = revisitas.map((r) => {
-      if (r.id === selectedRevisita.id) {
-        return {
-          ...r,
-          dataRealizada: revData,
-          horaRealizada: revHora,
-          concluida: true,
-          pontosMelhoria: revPontosMelhoria,
-          novasObservacoes: revObservacoes.trim(),
-          temFotos: revPendingPhotos.length > 0,
-        };
-      }
-      return r;
-    });
+    const updatedRevisitaObj = {
+      ...selectedRevisita,
+      dataRealizada: revData,
+      horaRealizada: revHora,
+      concluida: true,
+      pontosMelhoria: revPontosMelhoria,
+      novasObservacoes: revObservacoes.trim(),
+      temFotos: revPendingPhotos.length > 0,
+    };
+
+    const baseRevisitas = revisitas.map((r) =>
+      r.id === selectedRevisita.id ? updatedRevisitaObj : r
+    );
 
     if (revPendingPhotos.length > 0) {
       localStorage.setItem(`fotos_revisita:${selectedRevisita.id}`, JSON.stringify(revPendingPhotos));
     }
 
-    saveRevisitasToStorage(updatedRevisitas);
+    saveRevisitasToStorage(baseRevisitas);
     setRevisitaFormOpen(false);
-    triggerToast('Revisita finalizada com sucesso e registrada no histórico!');
     setRelatoriosActiveTab('realizadas');
     navigateTo('relatorios');
+    triggerToast('Revisita finalizada com sucesso e registrada no histórico!');
   };
 
   const handleExcluirRevisita = (id: string) => {
@@ -1257,50 +1272,68 @@ export default function App() {
       >
         <div className="space-y-4">
           {/* Selector Tabs: Realizar vs Planejar */}
-          <div className="flex bg-paper border border-line rounded-lg p-1">
-            <button
-              type="button"
-              onClick={() => setVisitaActionType('realizar')}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                visitaActionType === 'realizar'
-                  ? 'bg-brand-accent text-white shadow-xs'
-                  : 'text-ink-soft hover:bg-card'
-              }`}
-            >
-              Registrar Visita Realizada
-            </button>
-            <button
-              type="button"
-              onClick={() => setVisitaActionType('planejar')}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                visitaActionType === 'planejar'
-                  ? 'bg-brand-accent text-white shadow-xs'
-                  : 'text-ink-soft hover:bg-card'
-              }`}
-            >
-              Agendar Visita (Planejar)
-            </button>
-          </div>
+          {!associatedPlanoId && (
+            <div className="flex bg-paper border border-line rounded-lg p-1">
+              <button
+                type="button"
+                onClick={() => setVisitaActionType('realizar')}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  visitaActionType === 'realizar'
+                    ? 'bg-brand-accent text-white shadow-xs'
+                    : 'text-ink-soft hover:bg-card'
+                }`}
+              >
+                Registrar Visita Realizada
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisitaActionType('planejar')}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  visitaActionType === 'planejar'
+                    ? 'bg-brand-accent text-white shadow-xs'
+                    : 'text-ink-soft hover:bg-card'
+                }`}
+              >
+                Agendar Visita (Planejar)
+              </button>
+            </div>
+          )}
 
           {visitaActionType === 'realizar' ? (
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
                 Filial Visitada *
               </label>
-              <select
-                value={selectedLojaForVisita?.id || ''}
-                onChange={(e) => {
-                  const match = lojas.find((l) => l.id === e.target.value);
-                  setSelectedLojaForVisita(match || null);
-                }}
-                className="px-3 py-2 border border-line rounded-lg text-xs outline-none focus:border-brand-accent bg-card text-ink"
-              >
-                {lojas.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.nome} · {l.codigo}
-                  </option>
-                ))}
-              </select>
+              {associatedPlanoId ? (
+                <div className="px-3.5 py-3 border border-brand-accent bg-brand-accent/5 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-ink block text-xs">
+                      {selectedLojaForVisita?.nome || 'Filial não encontrada'}
+                    </span>
+                    <span className="text-[10px] text-ink-soft font-mono">
+                      Código: {selectedLojaForVisita?.codigo || '—'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-brand-accent/15 text-brand-accent font-extrabold px-2 py-0.5 rounded-full uppercase">
+                    Regional {selectedLojaForVisita?.regional || '—'}
+                  </span>
+                </div>
+              ) : (
+                <select
+                  value={selectedLojaForVisita?.id || ''}
+                  onChange={(e) => {
+                    const match = lojas.find((l) => l.id === e.target.value);
+                    setSelectedLojaForVisita(match || null);
+                  }}
+                  className="px-3 py-2 border border-line rounded-lg text-xs outline-none focus:border-brand-accent bg-card text-ink"
+                >
+                  {lojas.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.nome} · {l.codigo}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-1">

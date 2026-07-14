@@ -660,7 +660,11 @@ export default function RelatoriosView({
                   getFilteredPlanos().map((p) => {
                     const l = lojas.find((x) => x.id === p.lojaId);
                     return (
-                      <tr key={p.id} className="hover:bg-paper/25 transition-colors">
+                      <tr 
+                        key={p.id} 
+                        className="hover:bg-paper/25 transition-colors cursor-pointer"
+                        onClick={() => onOpenVisitaModal && onOpenVisitaModal(p.lojaId, p.id)}
+                      >
                         <td className="p-3">
                           <span className="font-bold block">{l ? l.nome : '—'}</span>
                           <span className="text-[10.5px] text-ink-faint font-mono font-medium block mt-0.5">
@@ -675,7 +679,7 @@ export default function RelatoriosView({
                         <td className="p-3 max-w-[280px] text-ink-soft font-medium">
                           {p.obs || <span className="text-ink-faint italic">Retorno operacional planejado</span>}
                         </td>
-                        <td className="p-3 text-right whitespace-nowrap no-print">
+                        <td className="p-3 text-right whitespace-nowrap no-print" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
                             {onOpenVisitaModal && (
                               <button
@@ -692,7 +696,7 @@ export default function RelatoriosView({
                                 className="p-1.5 border border-line text-ink-soft hover:bg-paper rounded-lg transition-colors cursor-pointer"
                                 title="Remover planejamento"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-4 h-4 text-red-500" />
                               </button>
                             )}
                           </div>
@@ -802,10 +806,10 @@ export default function RelatoriosView({
                               <button
                                 onClick={() => onOpenRevisitaModal(r)}
                                 className="px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-[10.5px] font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
-                                title="Executar auditoria de retorno"
+                                title="Registrar auditoria de revisita"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
-                                Executar
+                                Registrar Revisita
                               </button>
                             )}
                             {onExcluirRevisita && (
