@@ -1,0 +1,6 @@
+{
+  "name": "RotaCerta",
+  "description": "Gestão de Visitas e Rotas de Lojas - Grupo Alvorada",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --navy: #101a2c;
+  --navy-2: #182541;
+  --navy-3: #22355c;
+  --paper: #f2f3f1;
+  --card: #ffffff;
+  --line: #e1e4e2;
+  --ink: #141a24;
+  --ink-soft: #5c6470;
+  --ink-faint: #8b93a0;
+  --green: #2f9e64;
+  --green-soft: #e4f5ec;
+  --amber: #c98a06;
+  --amber-soft: #fbf1dc;
+  --red: #c8493f;
+  --red-soft: #fbe6e4;
+  --accent: #3568d4;
+  --accent-soft: #e8eefc;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16,26,44,.06), 0 4px 16px rgba(16,26,44,.06);
+}
+
+[data-theme="dark"] {
+  --paper: #0c1219;
+  --card: #141d2b;
+  --line: #26334a;
+  --ink: #eef1f5;
+  --ink-soft: #9aa7ba;
+  --ink-faint: #69758a;
+  --green-soft: #12291d;
+  --amber-soft: #2c2210;
+  --red-soft: #341c1a;
+  --accent-soft: #16233d;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 20px rgba(0,0,0,.35);
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-condensed: "Barlow Condensed", sans-serif;
+
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  
+  --color-brand-navy: var(--navy);
+  --color-brand-navy-2: var(--navy-2);
+  --color-brand-navy-3: var(--navy-3);
+
+  --color-brand-green: var(--green);
+  --color-brand-green-soft: var(--green-soft);
+  --color-brand-amber: var(--amber);
+  --color-brand-amber-soft: var(--amber-soft);
+  --color-brand-red: var(--red);
+  --color-brand-red-soft: var(--red-soft);
+  --color-brand-accent: var(--accent);
+  --color-brand-accent-soft: var(--accent-soft);
+
+  --border-radius-custom: var(--radius);
+  --box-shadow-custom: var(--shadow);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+/* Dashed route background */
+.routeline-bg {
+  background-image: repeating-linear-gradient(90deg, var(--ink-faint) 0 6px, transparent 6px 12px);
+  background-size: 100% 1.5px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: transparent;
+}
+
