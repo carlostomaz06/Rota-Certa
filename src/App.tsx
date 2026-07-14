@@ -75,6 +75,7 @@ export default function App() {
   const [selectedLojaIdsForVisita, setSelectedLojaIdsForVisita] = useState<string[]>([]);
   const [visitaLojaSearch, setVisitaLojaSearch] = useState('');
   const [associatedPlanoId, setAssociatedPlanoId] = useState<string | null>(null);
+  const [selectedCoVisitantes, setSelectedCoVisitantes] = useState<string[]>([]);
 
   // Visita input fields states
   const [vData, setVData] = useState(todayISO());
@@ -407,6 +408,18 @@ export default function App() {
     setSelectedLojaIdsForVisita(defaultLoja ? [defaultLoja.id] : []);
     setVisitaLojaSearch('');
     setAssociatedPlanoId(planoId || null);
+    
+    // Pre-populate co-visitors from associated plan if present
+    const plan = planoId ? planos.find((p) => p.id === planoId) : null;
+    if (plan) {
+      const names = plan.usuario.split(',').map(s => s.trim()).filter(Boolean);
+      const primaryUser = currentUser?.nome || 'Supervisor';
+      const coVisitantes = names.filter(n => n.toLowerCase() !== primaryUser.toLowerCase() && n.toLowerCase() !== 'supervisor');
+      setSelectedCoVisitantes(coVisitantes);
+    } else {
+      setSelectedCoVisitantes([]);
+    }
+    
     setVisitaActionType(initialActionType);
 
     // Reset input fields
@@ -483,6 +496,11 @@ export default function App() {
       return;
     }
 
+    const primaryUser = currentUser?.nome || 'Supervisor';
+    const allParticipants = [primaryUser, ...selectedCoVisitantes];
+    const uniqueParticipants = Array.from(new Set(allParticipants)).filter(Boolean);
+    const usuarioStr = uniqueParticipants.join(', ');
+
     if (visitaActionType === 'planejar') {
       if (selectedLojaIdsForVisita.length === 0) {
         triggerToast('Selecione pelo menos uma filial para agendar.');
@@ -492,7 +510,7 @@ export default function App() {
         id: `plano_${Date.now()}_${index}`,
         lojaId,
         data: vData,
-        usuario: currentUser?.nome || 'Supervisor',
+        usuario: usuarioStr,
         obs: vComentario.trim() || 'Visita agendada.',
         concluido: false,
       }));
@@ -508,11 +526,10 @@ export default function App() {
     }
 
     const visitaId = `visita_${Date.now()}`;
-    const associatedPlano = associatedPlanoId ? planos.find((p) => p.id === associatedPlanoId) : null;
     const newVisita: Visita = {
       id: visitaId,
       lojaId: selectedLojaForVisita.id,
-      usuario: associatedPlano ? associatedPlano.usuario : (currentUser?.nome || 'Supervisor'),
+      usuario: usuarioStr,
       data: vData,
       hora: vHora,
       status: vStatus,
@@ -1382,6 +1399,48 @@ export default function App() {
               )}
             </div>
           )}
+
+          {/* Seletor de Equipe / Acompanhantes */}
+          <div className="flex flex-col gap-1.5 border-t border-b border-line/40 py-2.5 my-2">
+            <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider block">
+              Equipe / Acompanhantes (Visita em Conjunto)
+            </label>
+            <span className="text-[10px] text-ink-faint leading-tight block">
+              Selecione outros supervisores ou auditores que participaram ou participarão desta visita junto com você.
+            </span>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {users.map((u) => {
+                const isCurrentUser = currentUser ? u.nome.toLowerCase() === currentUser.nome.toLowerCase() : false;
+                const isSelected = selectedCoVisitantes.includes(u.nome) || isCurrentUser;
+                
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      if (isCurrentUser) return;
+                      if (selectedCoVisitantes.includes(u.nome)) {
+                        setSelectedCoVisitantes(selectedCoVisitantes.filter((name) => name !== u.nome));
+                      } else {
+                        setSelectedCoVisitantes([...selectedCoVisitantes, u.nome]);
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${
+                      isCurrentUser
+                        ? 'bg-brand-accent/10 border-brand-accent/20 text-brand-accent cursor-not-allowed font-bold'
+                        : isSelected
+                        ? 'bg-brand-accent border-brand-accent text-white font-bold'
+                        : 'bg-card border-line text-ink-soft hover:bg-paper hover:text-ink'
+                    }`}
+                  >
+                    {isSelected && <span className="text-[9px] font-bold">✓</span>}
+                    <span>{u.nome}</span>
+                    {isCurrentUser && <span className="text-[9px] opacity-80 font-normal italic">(Você)</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {visitaActionType === 'realizar' ? (
             <>
