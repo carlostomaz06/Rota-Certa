@@ -26,6 +26,8 @@ interface RelatoriosViewProps {
   lojas: Loja[];
   users: User[];
   toast: (msg: string) => void;
+  activeTab?: 'realizadas' | 'planejadas' | 'revisitas' | 'historico';
+  onChangeTab?: (tab: 'realizadas' | 'planejadas' | 'revisitas' | 'historico') => void;
   onExcluirVisita?: (id: string) => void;
   onExcluirPlano?: (id: string) => void;
   onConcluirPlano?: (id: string) => void;
@@ -104,6 +106,8 @@ export default function RelatoriosView({
   lojas,
   users,
   toast,
+  activeTab: propActiveTab,
+  onChangeTab,
   onExcluirVisita,
   onExcluirPlano,
   onConcluirPlano,
@@ -113,7 +117,9 @@ export default function RelatoriosView({
   onOpenVisitaModal
 }: RelatoriosViewProps) {
   // Navigation Tabs matching step 6 of requirements
-  const [activeTab, setActiveTab] = useState<'realizadas' | 'planejadas' | 'revisitas' | 'historico'>('realizadas');
+  const [localActiveTab, setLocalActiveTab] = useState<'realizadas' | 'planejadas' | 'revisitas' | 'historico'>('realizadas');
+  const activeTab = propActiveTab || localActiveTab;
+  const setActiveTab = onChangeTab || setLocalActiveTab;
 
   // Filters for Realizadas & Planejadas tabs
   const [de, setDe] = useState('');
@@ -122,7 +128,7 @@ export default function RelatoriosView({
   const [regional, setRegional] = useState('');
 
   // Revisit filters
-  const [revisitaStatus, setRevisitaStatus] = useState<'todos' | 'pendentes' | 'concluidos'>('todos');
+  const [revisitaStatus, setRevisitaStatus] = useState<'todos' | 'pendentes' | 'concluidos'>('pendentes');
 
   // Search filter for Histórico da Loja tab
   const [buscaLoja, setBuscaLoja] = useState('');
@@ -137,10 +143,11 @@ export default function RelatoriosView({
     let sheetName = 'Relatório';
 
     if (activeTab === 'realizadas') {
-      sheetName = 'Visitas Realizadas';
-      dataToExport = getFilteredVisitas().map((v) => {
+      sheetName = 'Visitas e Revisitas Realizadas';
+      dataToExport = getFilteredRealizadas().map((v) => {
         const l = lojas.find((x) => x.id === v.lojaId);
         return {
+          Tipo: v.type === 'revisita' ? 'Revisita' : 'Visita',
           Loja: l ? l.nome : '—',
           Código: l ? l.codigo : '—',
           Regional: l ? l.regional : '—',
@@ -206,9 +213,48 @@ export default function RelatoriosView({
     window.print();
   };
 
-  // Filter builders for standard visits
-  const getFilteredVisitas = () => {
-    let list = [...visitas];
+  // Filter builders for standard visits and completed revisits combined
+  const getFilteredRealizadas = () => {
+    const combined: any[] = [];
+    
+    // Add standard visits
+    visitas.forEach((v) => {
+      combined.push({
+        id: v.id,
+        lojaId: v.lojaId,
+        data: v.data,
+        hora: v.hora,
+        usuario: v.usuario,
+        status: v.status || 'OK',
+        comentario: v.comentario || '',
+        temFotos: !!v.temFotos,
+        gps: v.gps || null,
+        pendenciasCount: v.pendencias ? v.pendencias.length : 0,
+        type: 'visita',
+      });
+    });
+
+    // Add completed revisits
+    revisitas.forEach((r) => {
+      if (r.concluida && r.dataRealizada) {
+        combined.push({
+          id: r.id,
+          lojaId: r.lojaId,
+          data: r.dataRealizada,
+          hora: r.horaRealizada || '00:00',
+          usuario: r.usuario,
+          status: 'REVISITA CONCLUÍDA',
+          comentario: r.novasObservacoes || 'Revisita de pendências finalizada.',
+          temFotos: !!r.temFotos,
+          gps: null,
+          pendenciasCount: r.pontosMelhoria ? r.pontosMelhoria.filter((p) => !p.corrigido).length : 0,
+          type: 'revisita',
+        });
+      }
+    });
+
+    // Apply filters
+    let list = combined;
     if (de) list = list.filter((v) => v.data >= de);
     if (ate) list = list.filter((v) => v.data <= ate);
     if (usuario) {
@@ -220,6 +266,7 @@ export default function RelatoriosView({
         return l && l.regional === regional;
       });
     }
+
     return list.sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
   };
 
@@ -361,7 +408,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          ✅ Realizadas ({visitas.length})
+          ✅ Realizadas ({visitas.length + revisitas.filter((r) => r.concluida).length})
         </button>
         <button
           onClick={() => setActiveTab('planejadas')}
@@ -381,7 +428,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          🔄 Revisitas ({revisitas.length})
+          🔄 Revisitas ({revisitas.filter((r) => !r.concluida).length})
         </button>
         <button
           onClick={() => setActiveTab('historico')}
@@ -494,14 +541,14 @@ export default function RelatoriosView({
                   <th className="p-3">Reg.</th>
                   <th className="p-3">Data</th>
                   <th className="p-3">Responsável</th>
-                  <th className="p-3">Status</th>
+                  <th className="p-3">Tipo / Status</th>
                   <th className="p-3 max-w-[200px]">Comentários / Fotos</th>
                   <th className="p-3 text-right no-print">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line text-ink leading-relaxed">
-                {getFilteredVisitas().length > 0 ? (
-                  getFilteredVisitas().map((v) => {
+                {getFilteredRealizadas().length > 0 ? (
+                  getFilteredRealizadas().map((v) => {
                     const l = lojas.find((x) => x.id === v.lojaId);
                     return (
                       <tr key={v.id} className="hover:bg-paper/25 transition-colors">
@@ -517,35 +564,60 @@ export default function RelatoriosView({
                         </td>
                         <td className="p-3 font-semibold text-brand-navy">{v.usuario}</td>
                         <td className="p-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-brand-green-soft text-brand-green">
-                            {v.status || 'OK'}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${
+                              v.type === 'revisita'
+                                ? 'bg-indigo-50 border border-indigo-200 text-indigo-700'
+                                : 'bg-brand-green-soft text-brand-green'
+                            }`}>
+                              {v.type === 'revisita' ? 'Revisita' : 'Visita'}
+                            </span>
+                            <span className="text-[10px] text-ink-soft font-bold uppercase tracking-wide">
+                              {v.status || 'OK'}
+                            </span>
+                          </div>
                         </td>
                         <td className="p-3 max-w-[280px]">
                           <p className="text-ink-soft font-medium text-xs truncate-2-lines break-words">
                             {v.comentario || <span className="text-ink-faint italic">Sem observações</span>}
                           </p>
-                          {v.pendencias && v.pendencias.length > 0 && (
+                          {v.pendenciasCount > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               <span className="text-[9px] bg-brand-red-soft text-brand-red px-1 rounded font-bold uppercase tracking-wider">
-                                {v.pendencias.length} Pendências
+                                {v.pendenciasCount} {v.type === 'revisita' ? 'Desvios Pendentes' : 'Pendências'}
                               </span>
                             </div>
                           )}
                           {v.temFotos && onViewPhoto && (
-                            <VisitaPhotosRenderer visitaId={v.id} onViewPhoto={onViewPhoto} />
+                            v.type === 'revisita' ? (
+                              <RevisitaPhotosRenderer revisitaId={v.id} onViewPhoto={onViewPhoto} />
+                            ) : (
+                              <VisitaPhotosRenderer visitaId={v.id} onViewPhoto={onViewPhoto} />
+                            )
                           )}
                         </td>
                         <td className="p-3 text-right whitespace-nowrap no-print">
                           <div className="flex items-center justify-end gap-1.5">
-                            {onExcluirVisita && (
-                              <button
-                                onClick={() => onExcluirVisita(v.id)}
-                                className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
-                                title="Excluir visita realizada"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            {v.type === 'revisita' ? (
+                              onExcluirRevisita && (
+                                <button
+                                  onClick={() => onExcluirRevisita(v.id)}
+                                  className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
+                                  title="Excluir revisita realizada"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )
+                            ) : (
+                              onExcluirVisita && (
+                                <button
+                                  onClick={() => onExcluirVisita(v.id)}
+                                  className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
+                                  title="Excluir visita realizada"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )
                             )}
                           </div>
                         </td>
@@ -557,7 +629,7 @@ export default function RelatoriosView({
                     <td colSpan={7} className="p-12 text-center text-ink-soft">
                       <div className="flex flex-col items-center justify-center">
                         <Search className="w-8 h-8 text-ink-faint mb-2 stroke-[1.5]" />
-                        <span className="text-xs font-semibold">Nenhuma visita realizada encontrada com estes filtros.</span>
+                        <span className="text-xs font-semibold">Nenhuma visita ou revisita realizada encontrada com estes filtros.</span>
                       </div>
                     </td>
                   </tr>

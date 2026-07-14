@@ -90,7 +90,7 @@ export default function PlanejamentoView({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
         {dias.map((d) => {
           const diaPlanos = planos
-            .filter((p) => p.data === d)
+            .filter((p) => p.data === d && !p.concluido)
             .sort((a, b) => a.usuario.localeCompare(b.usuario));
           const isToday = d === hoje;
 

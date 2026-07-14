@@ -52,6 +52,7 @@ export default function App() {
 
   // Navigation State
   const [currentView, setCurrentView] = useState('dashboard');
+  const [relatoriosActiveTab, setRelatoriosActiveTab] = useState<'realizadas' | 'planejadas' | 'revisitas' | 'historico'>('realizadas');
   const [selectedLojaId, setSelectedLojaId] = useState('');
 
   // Filtering states
@@ -612,22 +613,14 @@ export default function App() {
     setReturnModalOpen(false);
     triggerToast('Agendamento de retorno e revisita automática gravados!');
 
-    // Refresh active detail view if looking at that store
-    if (currentView === 'loja-detalhe' && selectedLojaId === returnLojaId) {
-      navigateTo('loja-detalhe', selectedLojaId);
-    } else {
-      navigateTo('dashboard');
-    }
+    setRelatoriosActiveTab('realizadas');
+    navigateTo('relatorios');
   };
 
   const handleSkipReturn = () => {
     setReturnModalOpen(false);
-    // Refresh active detail view if looking at that store
-    if (currentView === 'loja-detalhe' && selectedLojaId === returnLojaId) {
-      navigateTo('loja-detalhe', selectedLojaId);
-    } else {
-      navigateTo('dashboard');
-    }
+    setRelatoriosActiveTab('realizadas');
+    navigateTo('relatorios');
   };
 
   const handleOpenRevisitaModal = (revisita: Revisita) => {
@@ -689,6 +682,8 @@ export default function App() {
     saveRevisitasToStorage(updatedRevisitas);
     setRevisitaFormOpen(false);
     triggerToast('Revisita finalizada com sucesso e registrada no histórico!');
+    setRelatoriosActiveTab('realizadas');
+    navigateTo('relatorios');
   };
 
   const handleExcluirRevisita = (id: string) => {
@@ -991,6 +986,8 @@ export default function App() {
             lojas={lojas}
             users={users}
             toast={triggerToast}
+            activeTab={relatoriosActiveTab}
+            onChangeTab={setRelatoriosActiveTab}
             onExcluirVisita={handleExcluirVisita}
             onExcluirPlano={handleExcluirPlano}
             onConcluirPlano={handleConcluirPlano}
