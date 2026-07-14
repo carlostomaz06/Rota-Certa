@@ -7,6 +7,21 @@ import React, { useState, useEffect } from 'react';
 import { Loja, User, Visita, Plano, Config, Revisita, RevisitaPonto } from './types';
 import { INITIAL_LOJAS, INITIAL_USERS, STATUS_OPCOES } from './data';
 import { todayISO, nowTimeStr, fileToCompressedDataURL } from './utils';
+import {
+  seedDatabaseIfEmpty,
+  subscribeToCollection,
+  subscribeToDoc,
+  saveLojaToFirestore,
+  deleteLojaFromFirestore,
+  saveUserToFirestore,
+  saveVisitaToFirestore,
+  deleteVisitaFromFirestore,
+  saveRevisitaToFirestore,
+  deleteRevisitaFromFirestore,
+  savePlanoToFirestore,
+  deletePlanoFromFirestore,
+  saveConfigToFirestore
+} from './firebase';
 
 // Import Views
 import Sidebar from './components/Sidebar';
@@ -538,6 +553,7 @@ export default function App() {
       gps: pendingGPS,
       temFotos: pendingPhotos.length > 0,
       pendencias: vPendencias,
+      fotos: pendingPhotos,
     };
 
     // Save photos in separate entries to prevent exceeding browser localStorage quota
@@ -684,6 +700,7 @@ export default function App() {
       pontosMelhoria: revPontosMelhoria,
       novasObservacoes: revObservacoes.trim(),
       temFotos: revPendingPhotos.length > 0,
+      fotos: revPendingPhotos,
     };
 
     const baseRevisitas = revisitas.map((r) =>

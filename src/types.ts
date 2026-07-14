@@ -31,6 +31,7 @@ export interface Visita {
   gps: { lat: number; lng: number } | null;
   temFotos: boolean;
   pendencias?: string[];
+  fotos?: string[];
 }
 
 export interface RevisitaPonto {
@@ -51,6 +52,7 @@ export interface Revisita {
   observacoesOriginais: string;
   novasObservacoes?: string;
   temFotos: boolean;
+  fotos?: string[];
 }
 
 export interface Plano {

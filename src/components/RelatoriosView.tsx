@@ -38,9 +38,13 @@ interface RelatoriosViewProps {
 }
 
 // Lazy photos loader helper for Visits
-function VisitaPhotosRenderer({ visitaId, onViewPhoto }: { visitaId: string; onViewPhoto: (url: string) => void }) {
-  const [photos, setPhotos] = useState<string[]>([]);
+function VisitaPhotosRenderer({ visitaId, initialPhotos, onViewPhoto }: { visitaId: string; initialPhotos?: string[]; onViewPhoto: (url: string) => void }) {
+  const [photos, setPhotos] = useState<string[]>(initialPhotos || []);
   React.useEffect(() => {
+    if (initialPhotos && initialPhotos.length > 0) {
+      setPhotos(initialPhotos);
+      return;
+    }
     try {
       const stored = localStorage.getItem(`fotos:${visitaId}`);
       if (stored) {
@@ -49,7 +53,7 @@ function VisitaPhotosRenderer({ visitaId, onViewPhoto }: { visitaId: string; onV
     } catch (e) {
       console.error(e);
     }
-  }, [visitaId]);
+  }, [visitaId, initialPhotos]);
 
   if (photos.length === 0) return null;
 
@@ -69,9 +73,13 @@ function VisitaPhotosRenderer({ visitaId, onViewPhoto }: { visitaId: string; onV
 }
 
 // Lazy photos loader helper for Revisits
-function RevisitaPhotosRenderer({ revisitaId, onViewPhoto }: { revisitaId: string; onViewPhoto: (url: string) => void }) {
-  const [photos, setPhotos] = useState<string[]>([]);
+function RevisitaPhotosRenderer({ revisitaId, initialPhotos, onViewPhoto }: { revisitaId: string; initialPhotos?: string[]; onViewPhoto: (url: string) => void }) {
+  const [photos, setPhotos] = useState<string[]>(initialPhotos || []);
   React.useEffect(() => {
+    if (initialPhotos && initialPhotos.length > 0) {
+      setPhotos(initialPhotos);
+      return;
+    }
     try {
       const stored = localStorage.getItem(`fotos_revisita:${revisitaId}`);
       if (stored) {
@@ -80,7 +88,7 @@ function RevisitaPhotosRenderer({ revisitaId, onViewPhoto }: { revisitaId: strin
     } catch (e) {
       console.error(e);
     }
-  }, [revisitaId]);
+  }, [revisitaId, initialPhotos]);
 
   if (photos.length === 0) return null;
 
@@ -231,6 +239,7 @@ export default function RelatoriosView({
         gps: v.gps || null,
         pendenciasCount: v.pendencias ? v.pendencias.length : 0,
         type: 'visita',
+        fotos: v.fotos || [],
       });
     });
 
@@ -249,6 +258,7 @@ export default function RelatoriosView({
           gps: null,
           pendenciasCount: r.pontosMelhoria ? r.pontosMelhoria.filter((p) => !p.corrigido).length : 0,
           type: 'revisita',
+          fotos: r.fotos || [],
         });
       }
     });
@@ -342,7 +352,8 @@ export default function RelatoriosView({
       pendencias: v.pendencias || [],
       concluida: true,
       pontosMelhoria: [] as { descricao: string; corrigido: boolean }[],
-      dataPlanejada: v.data
+      dataPlanejada: v.data,
+      fotos: v.fotos || []
     }));
 
     const mappedRevisitas = sRevisitas.map((r) => ({
@@ -358,7 +369,8 @@ export default function RelatoriosView({
       pendencias: [] as string[],
       concluida: !!r.concluida,
       pontosMelhoria: r.pontosMelhoria || [],
-      dataPlanejada: r.dataPlanejada
+      dataPlanejada: r.dataPlanejada,
+      fotos: r.fotos || []
     }));
 
     return [...mappedVisits, ...mappedRevisitas].sort((a, b) =>
@@ -590,9 +602,9 @@ export default function RelatoriosView({
                           )}
                           {v.temFotos && onViewPhoto && (
                             v.type === 'revisita' ? (
-                              <RevisitaPhotosRenderer revisitaId={v.id} onViewPhoto={onViewPhoto} />
+                              <RevisitaPhotosRenderer revisitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
                             ) : (
-                              <VisitaPhotosRenderer visitaId={v.id} onViewPhoto={onViewPhoto} />
+                              <VisitaPhotosRenderer visitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
                             )
                           )}
                         </td>
@@ -1012,9 +1024,9 @@ export default function RelatoriosView({
                               {/* Display lazy loaded photos */}
                               {item.temFotos && onViewPhoto && (
                                 isRevisita ? (
-                                  <RevisitaPhotosRenderer revisitaId={item.id} onViewPhoto={onViewPhoto} />
+                                  <RevisitaPhotosRenderer revisitaId={item.id} initialPhotos={item.fotos} onViewPhoto={onViewPhoto} />
                                 ) : (
-                                  <VisitaPhotosRenderer visitaId={item.id} onViewPhoto={onViewPhoto} />
+                                  <VisitaPhotosRenderer visitaId={item.id} initialPhotos={item.fotos} onViewPhoto={onViewPhoto} />
                                 )
                               )}
 
