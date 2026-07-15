@@ -55,27 +55,43 @@ export async function seedDatabaseIfEmpty() {
 // Data synchronization hooks/helpers
 export function subscribeToCollection<T>(
   collectionName: string,
-  onUpdate: (data: T[]) => void
+  onUpdate: (data: T[]) => void,
+  onError?: (error: any) => void
 ) {
-  return onSnapshot(collection(db, collectionName), (snapshot) => {
-    const items: T[] = [];
-    snapshot.forEach((docSnap) => {
-      items.push({ ...docSnap.data() } as T);
-    });
-    onUpdate(items);
-  });
+  return onSnapshot(
+    collection(db, collectionName),
+    (snapshot) => {
+      const items: T[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ ...docSnap.data() } as T);
+      });
+      onUpdate(items);
+    },
+    (error) => {
+      console.error(`Firestore subscription error for ${collectionName}:`, error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 export function subscribeToDoc<T>(
   collectionName: string,
   docId: string,
-  onUpdate: (data: T) => void
+  onUpdate: (data: T) => void,
+  onError?: (error: any) => void
 ) {
-  return onSnapshot(doc(db, collectionName, docId), (docSnap) => {
-    if (docSnap.exists()) {
-      onUpdate(docSnap.data() as T);
+  return onSnapshot(
+    doc(db, collectionName, docId),
+    (docSnap) => {
+      if (docSnap.exists()) {
+        onUpdate(docSnap.data() as T);
+      }
+    },
+    (error) => {
+      console.error(`Firestore subscription error for ${collectionName}/${docId}:`, error);
+      if (onError) onError(error);
     }
-  });
+  );
 }
 
 // CRUD helper functions

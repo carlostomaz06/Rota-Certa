@@ -35,6 +35,8 @@ interface RelatoriosViewProps {
   onExcluirRevisita?: (id: string) => void;
   onViewPhoto?: (url: string) => void;
   onOpenVisitaModal?: (lojaId?: string, planoId?: string) => void;
+  onNavigate?: (view: string, param?: string) => void;
+  onRescheduleRevisita?: (revisitaId: string, newDate: string) => Promise<void>;
 }
 
 // Lazy photos loader helper for Visits
@@ -122,7 +124,9 @@ export default function RelatoriosView({
   onOpenRevisitaModal,
   onExcluirRevisita,
   onViewPhoto,
-  onOpenVisitaModal
+  onOpenVisitaModal,
+  onNavigate,
+  onRescheduleRevisita
 }: RelatoriosViewProps) {
   // Navigation Tabs matching step 6 of requirements
   const [localActiveTab, setLocalActiveTab] = useState<'realizadas' | 'planejadas' | 'revisitas' | 'historico'>('realizadas');
@@ -563,9 +567,16 @@ export default function RelatoriosView({
                   getFilteredRealizadas().map((v) => {
                     const l = lojas.find((x) => x.id === v.lojaId);
                     return (
-                      <tr key={v.id} className="hover:bg-paper/25 transition-colors">
-                        <td className="p-3">
-                          <span className="font-bold block">{l ? l.nome : '—'}</span>
+                      <tr key={v.id} className="hover:bg-paper/25 transition-colors group">
+                        <td 
+                          className="p-3 cursor-pointer hover:text-brand-accent transition-all duration-200"
+                          onClick={() => onNavigate && l && onNavigate('loja-detalhe', l.id)}
+                          title="Ver detalhes da loja"
+                        >
+                          <span className="font-bold flex items-center gap-1.5">
+                            {l ? l.nome : '—'}
+                            <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-accent" />
+                          </span>
                           <span className="text-[10.5px] text-ink-faint font-mono font-medium block mt-0.5">
                             {l ? l.codigo : '—'}
                           </span>
@@ -674,11 +685,21 @@ export default function RelatoriosView({
                     return (
                       <tr 
                         key={p.id} 
-                        className="hover:bg-paper/25 transition-colors cursor-pointer"
+                        className="hover:bg-paper/25 transition-colors cursor-pointer group"
                         onClick={() => onOpenVisitaModal && onOpenVisitaModal(p.lojaId, p.id)}
                       >
-                        <td className="p-3">
-                          <span className="font-bold block">{l ? l.nome : '—'}</span>
+                        <td 
+                          className="p-3 cursor-pointer hover:text-brand-accent transition-all duration-200"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onNavigate && l) onNavigate('loja-detalhe', l.id);
+                          }}
+                          title="Ver detalhes da loja"
+                        >
+                          <span className="font-bold flex items-center gap-1.5">
+                            {l ? l.nome : '—'}
+                            <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-accent" />
+                          </span>
                           <span className="text-[10.5px] text-ink-faint font-mono font-medium block mt-0.5">
                             {l ? l.codigo : '—'}
                           </span>
@@ -756,14 +777,43 @@ export default function RelatoriosView({
                     const resolvidas = r.pontosMelhoria.filter((p) => p.corrigido).length;
 
                     return (
-                      <tr key={r.id} className="hover:bg-paper/25 transition-colors">
-                        <td className="p-3">
-                          <span className="font-bold block">{l ? l.nome : '—'}</span>
+                      <tr key={r.id} className="hover:bg-paper/25 transition-colors group/row">
+                        <td 
+                          className="p-3 cursor-pointer hover:text-brand-accent transition-all duration-200"
+                          onClick={() => onNavigate && l && onNavigate('loja-detalhe', l.id)}
+                          title="Ver detalhes da loja"
+                        >
+                          <span className="font-bold flex items-center gap-1.5">
+                            {l ? l.nome : '—'}
+                            <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover/row:opacity-100 transition-opacity text-brand-accent" />
+                          </span>
                           <span className="text-[10.5px] text-ink-faint font-mono block mt-0.5">
                             {l ? l.codigo : '—'}
                           </span>
                         </td>
-                        <td className="p-3 font-medium text-ink-soft">{fmtDateBR(r.dataPlanejada)}</td>
+                        <td className="p-3 font-medium text-ink-soft">
+                          {!r.concluida ? (
+                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="date"
+                                value={r.dataPlanejada}
+                                onChange={async (e) => {
+                                  const val = e.target.value;
+                                  if (val && onRescheduleRevisita) {
+                                    try {
+                                      await onRescheduleRevisita(r.id, val);
+                                    } catch (err) {
+                                      console.error("Erro ao reagendar:", err);
+                                    }
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 border border-line rounded-lg text-xs outline-none focus:border-brand-accent bg-paper/20 hover:bg-paper/50 text-ink cursor-pointer font-semibold transition-all"
+                              />
+                            </div>
+                          ) : (
+                            fmtDateBR(r.dataPlanejada)
+                          )}
+                        </td>
                         <td className="p-3 font-semibold text-ink">
                           {r.concluida && r.dataRealizada ? (
                             <span>{fmtDateBR(r.dataRealizada)} <span className="text-ink-faint text-[10px] font-normal">às {r.horaRealizada}</span></span>

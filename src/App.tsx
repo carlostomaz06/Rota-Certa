@@ -170,6 +170,9 @@ export default function App() {
     setToastTimer(timer);
   };
 
+  // Firebase synchronization state status
+  const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+
   // On mount: load database states from local storage or populate seed data, and sync with Firestore in real time
   useEffect(() => {
     // 1. First, load from localStorage if available to ensure instant, zero-delay boot
@@ -224,43 +227,55 @@ export default function App() {
     // Now, run the async Firestore seed to ensure default data is populated if DB is blank
     seedDatabaseIfEmpty();
 
+    const handleSyncSuccess = () => setSyncStatus('connected');
+    const handleSyncError = (err: any) => {
+      console.error('Real-time sync error:', err);
+      setSyncStatus('error');
+    };
+
     // Subscribe to all Firestore collections for real-time live synchronization
     const unsubscribeLojas = subscribeToCollection<Loja>('lojas', (items) => {
+      handleSyncSuccess();
       if (items && items.length > 0) {
         const filtered = items.filter(l => l.filial !== '6' && l.filial !== '28' && l.id !== 'loja_6' && l.id !== 'loja_28');
         setLojas(filtered);
         localStorage.setItem('lojas', JSON.stringify(filtered));
       }
-    });
+    }, handleSyncError);
 
     const unsubscribeUsers = subscribeToCollection<User>('users', (items) => {
+      handleSyncSuccess();
       if (items && items.length > 0) {
         setUsers(items);
         localStorage.setItem('users', JSON.stringify(items));
       }
-    });
+    }, handleSyncError);
 
     const unsubscribeVisitas = subscribeToCollection<Visita>('visitas', (items) => {
+      handleSyncSuccess();
       setVisitas(items);
       localStorage.setItem('visitas', JSON.stringify(items));
-    });
+    }, handleSyncError);
 
     const unsubscribePlanos = subscribeToCollection<Plano>('planos', (items) => {
+      handleSyncSuccess();
       setPlanos(items);
       localStorage.setItem('planos', JSON.stringify(items));
-    });
+    }, handleSyncError);
 
     const unsubscribeRevisitas = subscribeToCollection<Revisita>('revisitas', (items) => {
+      handleSyncSuccess();
       setRevisitas(items);
       localStorage.setItem('revisitas', JSON.stringify(items));
-    });
+    }, handleSyncError);
 
     const unsubscribeConfig = subscribeToDoc<Config>('config', 'global', (item) => {
+      handleSyncSuccess();
       if (item) {
         setConfig(item);
         localStorage.setItem('config', JSON.stringify(item));
       }
-    });
+    }, handleSyncError);
 
     return () => {
       unsubscribeLojas();
@@ -831,6 +846,23 @@ export default function App() {
     );
   };
 
+  const handleRescheduleRevisita = async (revisitaId: string, newDate: string) => {
+    const r = revisitas.find((item) => item.id === revisitaId);
+    if (!r) return;
+
+    const updatedRevisitaObj = { ...r, dataPlanejada: newDate };
+    const updatedList = revisitas.map((item) => (item.id === revisitaId ? updatedRevisitaObj : item));
+    saveRevisitasToStorage(updatedList);
+
+    try {
+      await saveRevisitaToFirestore(updatedRevisitaObj);
+      triggerToast('Data da revisita reprogramada com sucesso!');
+    } catch (err) {
+      console.error('Error updating revisit date in Firestore:', err);
+      triggerToast('Erro ao atualizar data no banco de dados.');
+    }
+  };
+
   // Planned Visits handling
   const handleOpenPlanoForm = () => {
     if (lojas.length === 0) {
@@ -1099,6 +1131,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         alertCount={getAlertCount()}
+        syncStatus={syncStatus}
       />
 
       {/* Main Content Area */}
@@ -1172,6 +1205,8 @@ export default function App() {
             onExcluirRevisita={handleExcluirRevisita}
             onViewPhoto={setPhotoViewerUrl}
             onOpenVisitaModal={handleOpenVisitaModal}
+            onNavigate={navigateTo}
+            onRescheduleRevisita={handleRescheduleRevisita}
           />
         )}
 

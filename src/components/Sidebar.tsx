@@ -10,6 +10,7 @@ interface SidebarProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   alertCount: number;
+  syncStatus?: 'connecting' | 'connected' | 'error';
 }
 
 export default function Sidebar({
@@ -20,6 +21,7 @@ export default function Sidebar({
   theme,
   onToggleTheme,
   alertCount,
+  syncStatus = 'connecting',
 }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard', label: 'Painel', icon: LayoutDashboard, badge: alertCount > 0 ? alertCount : undefined },
@@ -34,13 +36,33 @@ export default function Sidebar({
       {/* Desktop / Tablet Sidebar (hidden on small screens) */}
       <nav className="hidden md:flex fixed top-0 bottom-0 left-0 w-56 bg-brand-navy text-[#cdd6e6] flex-col p-5 z-40 border-r border-brand-navy-3">
         {/* Brand logo */}
-        <div className="flex items-center gap-2.5 pb-6 pt-2">
+        <div className="flex items-center gap-2.5 pb-2 pt-2">
           <div className="relative w-3.5 h-3.5 rounded-full bg-brand-accent">
             <span className="absolute -inset-1 border-2 border-dashed border-brand-accent rounded-full opacity-40 animate-spin" />
           </div>
           <span className="font-condensed font-extrabold text-xl text-white tracking-wider uppercase">
             RotaCerta
           </span>
+        </div>
+
+        {/* Sync Status Badge */}
+        <div className="mb-5 px-2.5 py-1 rounded bg-white/5 border border-white/10 flex items-center gap-2 text-[11px] self-start">
+          {syncStatus === 'connected' ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[#a9b4c8]">Nuvem Ativa</span>
+            </>
+          ) : syncStatus === 'error' ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              <span className="text-rose-400 font-medium">Erro Nuvem</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-amber-400">Sincronizando...</span>
+            </>
+          )}
         </div>
 
         {/* Navigation Items */}
