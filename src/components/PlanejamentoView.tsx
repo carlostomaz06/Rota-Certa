@@ -20,6 +20,7 @@ interface PlanejamentoViewProps {
   onExcluirPlano: (id: string) => void;
   planSemanaOffset: number;
   setPlanSemanaOffset: (offset: number) => void;
+  canExcluir?: boolean;
 }
 
 export default function PlanejamentoView({
@@ -33,6 +34,7 @@ export default function PlanejamentoView({
   onExcluirPlano,
   planSemanaOffset,
   setPlanSemanaOffset,
+  canExcluir = false,
 }: PlanejamentoViewProps) {
   const hoje = todayISO();
   const monday = startOfWeekISO(hoje, planSemanaOffset);
@@ -160,12 +162,14 @@ export default function PlanejamentoView({
                                 Registrar
                               </button>
                             )}
-                            <button
-                              onClick={() => onExcluirPlano(p.id)}
-                              className="text-[10.5px] font-bold text-brand-red hover:underline cursor-pointer ml-auto"
-                            >
-                              Remover
-                            </button>
+                            {canExcluir && (
+                              <button
+                                onClick={() => onExcluirPlano(p.id)}
+                                className="text-[10.5px] font-bold text-brand-red hover:underline cursor-pointer ml-auto"
+                              >
+                                Remover
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

@@ -64,7 +64,7 @@ export function subscribeToCollection<T>(
     (snapshot) => {
       const items: T[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...docSnap.data() } as T);
+        items.push({ id: docSnap.id, ...docSnap.data() } as T);
       });
       onUpdate(items);
     },
@@ -85,7 +85,7 @@ export function subscribeToDoc<T>(
     doc(db, collectionName, docId),
     (docSnap) => {
       if (docSnap.exists()) {
-        onUpdate(docSnap.data() as T);
+        onUpdate({ id: docSnap.id, ...docSnap.data() } as T);
       }
     },
     (error) => {

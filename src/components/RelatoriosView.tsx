@@ -37,6 +37,7 @@ interface RelatoriosViewProps {
   onOpenVisitaModal?: (lojaId?: string, planoId?: string) => void;
   onNavigate?: (view: string, param?: string) => void;
   onRescheduleRevisita?: (revisitaId: string, newDate: string) => Promise<void>;
+  canExcluir?: boolean;
 }
 
 // Lazy photos loader helper for Visits
@@ -126,7 +127,8 @@ export default function RelatoriosView({
   onViewPhoto,
   onOpenVisitaModal,
   onNavigate,
-  onRescheduleRevisita
+  onRescheduleRevisita,
+  canExcluir = false,
 }: RelatoriosViewProps) {
   // Navigation Tabs matching step 6 of requirements
   const [localActiveTab, setLocalActiveTab] = useState<'realizadas' | 'planejadas' | 'revisitas' | 'historico'>('realizadas');
@@ -145,6 +147,17 @@ export default function RelatoriosView({
   // Search filter for Histórico da Loja tab
   const [buscaLoja, setBuscaLoja] = useState('');
   const [selectedHistoryLojaId, setSelectedHistoryLojaId] = useState<string>('');
+
+  React.useEffect(() => {
+    if (!selectedHistoryLojaId && lojas.length > 0) {
+      const cf1 = lojas.find((l) => l.nome.toLowerCase().includes('cabo frio 1') || l.id === 'loja_15');
+      if (cf1) {
+        setSelectedHistoryLojaId(cf1.id);
+      } else {
+        setSelectedHistoryLojaId(lojas[0].id);
+      }
+    }
+  }, [lojas, selectedHistoryLojaId]);
 
   // Extract unique regionals list
   const regionais = Array.from(new Set(lojas.map((l) => l.regional).filter(Boolean))).sort();
@@ -347,6 +360,7 @@ export default function RelatoriosView({
   const getSelectedStoreTimeline = (lojaId: string) => {
     const sVisits = visitas.filter((v) => v.lojaId === lojaId);
     const sRevisitas = revisitas.filter((r) => r.lojaId === lojaId);
+    const sPlanos = (planos || []).filter((p) => p.lojaId === lojaId && !p.concluido);
 
     const mappedVisits = sVisits.map((v) => ({
       id: v.id,
@@ -382,7 +396,24 @@ export default function RelatoriosView({
       fotos: r.fotos || []
     }));
 
-    return [...mappedVisits, ...mappedRevisitas].sort((a, b) =>
+    const mappedPlanos = sPlanos.map((p) => ({
+      id: p.id,
+      type: 'plano' as const,
+      usuario: p.usuario,
+      data: p.data,
+      hora: '00:00',
+      status: 'Visita Agendada (Pendente)',
+      comentario: p.obs || 'Visita operacional planejada.',
+      temFotos: false,
+      gps: null as { lat: number; lng: number } | null,
+      pendencias: [] as string[],
+      concluida: false,
+      pontosMelhoria: [] as { descricao: string; corrigido: boolean }[],
+      dataPlanejada: p.data,
+      fotos: [] as string[]
+    }));
+
+    return [...mappedVisits, ...mappedRevisitas, ...mappedPlanos].sort((a, b) =>
       (b.data + b.hora).localeCompare(a.data + a.hora)
     );
   };
@@ -685,7 +716,7 @@ export default function RelatoriosView({
                         </td>
                         <td className="p-3 text-right whitespace-nowrap no-print">
                           <div className="flex items-center justify-end gap-1.5">
-                            {v.isRevisitada && onExcluirRevisita && (
+                            {canExcluir && v.isRevisitada && onExcluirRevisita && (
                               <button
                                 onClick={() => onExcluirRevisita(v.revisitaId)}
                                 className="p-1.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
@@ -695,7 +726,7 @@ export default function RelatoriosView({
                                 <span className="text-[10px]">Excluir Revisita</span>
                               </button>
                             )}
-                            {onExcluirVisita && (
+                            {canExcluir && onExcluirVisita && (
                               <button
                                 onClick={() => onExcluirVisita(v.id)}
                                 className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
@@ -785,7 +816,7 @@ export default function RelatoriosView({
                                 Registrar Visita
                               </button>
                             )}
-                            {onExcluirPlano && (
+                            {canExcluir && onExcluirPlano && (
                               <button
                                 onClick={() => onExcluirPlano(p.id)}
                                 className="p-1.5 border border-line text-ink-soft hover:bg-paper rounded-lg transition-colors cursor-pointer"
@@ -936,7 +967,7 @@ export default function RelatoriosView({
                                 Registrar Revisita
                               </button>
                             )}
-                            {onExcluirRevisita && (
+                            {canExcluir && onExcluirRevisita && (
                               <button
                                 onClick={() => onExcluirRevisita(r.id)}
                                 className="p-1.5 border border-line text-ink-soft hover:bg-paper rounded-lg transition-colors cursor-pointer"
@@ -1059,15 +1090,20 @@ export default function RelatoriosView({
                     <div className="relative border-l border-line pl-6 ml-3 space-y-6 py-2">
                       {getSelectedStoreTimeline(selectedHistoryLoja.id).map((item) => {
                         const isRevisita = item.type === 'revisita';
+                        const isPlano = item.type === 'plano';
                         const isOK = item.status && (item.status.startsWith('OK') || item.status.includes('Concluída'));
                         const isClosed = item.status === 'Loja fechada / não atendeu';
 
                         const statusDotColor = isRevisita
                           ? (item.concluida ? 'bg-indigo-650' : 'bg-slate-400')
+                          : isPlano
+                          ? 'bg-sky-500'
                           : (isOK ? 'bg-brand-green' : isClosed ? 'bg-brand-red' : 'bg-brand-amber');
 
                         const statusBadgeStyle = isRevisita
                           ? (item.concluida ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-500 border border-slate-200')
+                          : isPlano
+                          ? 'bg-sky-50 text-sky-700 border border-sky-200'
                           : (isOK ? 'bg-brand-green-soft text-brand-green' : 'bg-brand-amber-soft text-brand-amber');
 
                         return (
@@ -1082,12 +1118,48 @@ export default function RelatoriosView({
                               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                                 <span className="font-bold text-ink text-sm group-hover:text-brand-accent transition-colors flex items-center gap-1.5">
                                   {isRevisita && <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin-slow" />}
+                                  {isPlano && <Calendar className="w-3.5 h-3.5 text-sky-600" />}
                                   {item.usuario}
                                   {isRevisita && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold uppercase">Revisita</span>}
+                                  {isPlano && <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.2 rounded font-semibold uppercase">Agendada</span>}
                                 </span>
-                                <span className="font-mono text-ink-faint text-[11px]">
-                                  {fmtDateBR(item.data)} às {item.hora}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono text-ink-faint text-[11px]">
+                                    {fmtDateBR(item.data)} às {item.hora}
+                                  </span>
+                                  {/* Delete button inside timeline for full data control */}
+                                  {canExcluir && (
+                                    <div className="no-print">
+                                      {isRevisita && onExcluirRevisita && (
+                                        <button
+                                          onClick={() => onExcluirRevisita(item.id)}
+                                          className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                          title="Excluir revisita"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {isPlano && onExcluirPlano && (
+                                        <button
+                                          onClick={() => onExcluirPlano(item.id)}
+                                          className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                          title="Excluir agendamento"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {!isRevisita && !isPlano && onExcluirVisita && (
+                                        <button
+                                          onClick={() => onExcluirVisita(item.id)}
+                                          className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                          title="Excluir visita realizada"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
 
                               <div>

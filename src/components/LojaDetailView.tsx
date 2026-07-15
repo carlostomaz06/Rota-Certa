@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Loja, Visita, Revisita } from '../types';
-import { ArrowLeft, Edit3, Plus, MapPin, AlertTriangle, Clock, Check, Calendar, RefreshCw } from 'lucide-react';
+import { Loja, Visita, Revisita, Plano } from '../types';
+import { ArrowLeft, Edit3, Plus, MapPin, AlertTriangle, Clock, Check, Calendar, RefreshCw, Trash2 } from 'lucide-react';
 import { fmtDateBR } from '../utils';
 
 interface LojaDetailViewProps {
@@ -8,11 +8,16 @@ interface LojaDetailViewProps {
   lojas: Loja[];
   visitas: Visita[];
   revisitas?: Revisita[];
+  planos?: Plano[];
   onNavigate: (view: string, param?: string) => void;
   onOpenLojaForm: (lojaId: string) => void;
   onOpenVisitaModal: (lojaId: string) => void;
   onOpenRevisitaModal?: (revisita: Revisita) => void;
   onViewPhoto: (photoUrl: string) => void;
+  onExcluirPlano?: (id: string) => void;
+  onExcluirVisita?: (id: string) => void;
+  onExcluirRevisita?: (id: string) => void;
+  canExcluir?: boolean;
 }
 
 // Stateful lazy loader for timeline photos
@@ -97,11 +102,16 @@ export default function LojaDetailView({
   lojas,
   visitas,
   revisitas = [],
+  planos = [],
   onNavigate,
   onOpenLojaForm,
   onOpenVisitaModal,
   onOpenRevisitaModal,
   onViewPhoto,
+  onExcluirPlano,
+  onExcluirVisita,
+  onExcluirRevisita,
+  canExcluir = false,
 }: LojaDetailViewProps) {
   const loja = lojas.find((l) => l.id === lojaId);
 
@@ -118,17 +128,17 @@ export default function LojaDetailView({
       </div>
     );
   }
-
   // Combine standard visits and completed revisits into a single chronological timeline
   const storeVisits = visitas.filter((v) => v.lojaId === loja.id);
   const storeRevisitas = revisitas.filter((r) => r.lojaId === loja.id);
+  const storePlanos = (planos || []).filter((p) => p.lojaId === loja.id && !p.concluido);
 
   // For visual indicators, get the historical standard visits sorted descending
   const history = [...storeVisits].sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
 
   interface TimelineItem {
     id: string;
-    type: 'visita' | 'revisita';
+    type: 'visita' | 'revisita' | 'plano';
     usuario: string;
     data: string;
     hora: string;
@@ -169,6 +179,22 @@ export default function LojaDetailView({
       dataPlanejada: r.dataPlanejada,
       pontosMelhoria: r.pontosMelhoria,
       novasObservacoes: r.novasObservacoes,
+    })),
+    ...storePlanos.map((p) => ({
+      id: p.id,
+      type: 'plano' as const,
+      usuario: p.usuario,
+      data: p.data,
+      hora: '00:00',
+      status: 'Visita Agendada (Pendente)',
+      comentario: p.obs || 'Visita operacional planejada.',
+      temFotos: false,
+      gps: null,
+      pendencias: [] as string[],
+      concluida: false,
+      dataPlanejada: p.data,
+      pontosMelhoria: [] as { descricao: string; corrigido: boolean }[],
+      novasObservacoes: '',
     })),
   ].sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
 
@@ -417,15 +443,20 @@ export default function LojaDetailView({
             <div className="relative border-l border-line pl-6 ml-3 space-y-6 py-2">
               {timelineItems.map((item) => {
                 const isRevisita = item.type === 'revisita';
+                const isPlano = item.type === 'plano';
                 const isOK = item.status && (item.status.startsWith('OK') || item.status.includes('Concluída'));
                 const isClosed = item.status === 'Loja fechada / não atendeu';
 
                 const statusDotColor = isRevisita
                   ? (item.concluida ? 'bg-indigo-600' : 'bg-slate-400')
+                  : isPlano
+                  ? 'bg-sky-500'
                   : (isOK ? 'bg-brand-green' : isClosed ? 'bg-brand-red' : 'bg-brand-amber');
 
                 const statusBadgeStyle = isRevisita
                   ? (item.concluida ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-500 border border-slate-200')
+                  : isPlano
+                  ? 'bg-sky-50 text-sky-700 border border-sky-200'
                   : (isOK ? 'bg-brand-green-soft text-brand-green' : 'bg-brand-amber-soft text-brand-amber');
 
                 return (
@@ -440,12 +471,48 @@ export default function LojaDetailView({
                       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
                         <span className="font-bold text-ink text-sm group-hover:text-brand-accent transition-colors flex items-center gap-1.5">
                           {isRevisita && <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin-slow" />}
+                          {isPlano && <Calendar className="w-3.5 h-3.5 text-sky-600" />}
                           {item.usuario}
                           {isRevisita && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold uppercase">Revisita</span>}
+                          {isPlano && <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.2 rounded font-semibold uppercase">Agendada</span>}
                         </span>
-                        <span className="font-mono text-ink-faint text-[11px]">
-                          {fmtDateBR(item.data)} às {item.hora}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-ink-faint text-[11px]">
+                            {fmtDateBR(item.data)} às {item.hora}
+                          </span>
+                          {/* Delete button inside timeline for full data control */}
+                          {canExcluir && (
+                            <div className="no-print">
+                              {isRevisita && onExcluirRevisita && (
+                                <button
+                                  onClick={() => onExcluirRevisita(item.id)}
+                                  className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                  title="Excluir revisita"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {isPlano && onExcluirPlano && (
+                                <button
+                                  onClick={() => onExcluirPlano(item.id)}
+                                  className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                  title="Excluir agendamento"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {!isRevisita && !isPlano && onExcluirVisita && (
+                                <button
+                                  onClick={() => onExcluirVisita(item.id)}
+                                  className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
+                                  title="Excluir visita realizada"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div>

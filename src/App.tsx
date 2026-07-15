@@ -829,6 +829,10 @@ export default function App() {
   };
 
   const handleExcluirRevisita = (id: string) => {
+    if (currentUser?.nome?.trim().toLowerCase() !== 'kadu') {
+      triggerToast('Apenas o usuário Kadu tem permissão para excluir!');
+      return;
+    }
     requestConfirmation(
       'Excluir Revisita',
       'Deseja realmente excluir esta revisita? Esta ação é irreversível.',
@@ -913,6 +917,10 @@ export default function App() {
   };
 
   const handleExcluirPlano = (id: string) => {
+    if (currentUser?.nome?.trim().toLowerCase() !== 'kadu') {
+      triggerToast('Apenas o usuário Kadu tem permissão para excluir!');
+      return;
+    }
     const updated = planos.filter((p) => p.id !== id);
     savePlanosToStorage(updated);
     deletePlanoFromFirestore(id).catch(console.error);
@@ -920,6 +928,10 @@ export default function App() {
   };
 
   const handleExcluirVisita = (id: string) => {
+    if (currentUser?.nome?.trim().toLowerCase() !== 'kadu') {
+      triggerToast('Apenas o usuário Kadu tem permissão para excluir!');
+      return;
+    }
     requestConfirmation(
       'Excluir Visita',
       'Deseja realmente excluir este relatório de visita? Esta ação é irreversível.',
@@ -927,6 +939,22 @@ export default function App() {
         const updated = visitas.filter((v) => v.id !== id);
         saveVisitasToStorage(updated);
         localStorage.removeItem(`fotos:${id}`);
+
+        // Cascade-delete any associated revisits linked to this visit
+        const associatedRevisitas = revisitas.filter((r) => r.visitaOriginalId === id);
+        if (associatedRevisitas.length > 0) {
+          const updatedRevisitas = revisitas.filter((r) => r.visitaOriginalId !== id);
+          saveRevisitasToStorage(updatedRevisitas);
+          for (const rev of associatedRevisitas) {
+            localStorage.removeItem(`fotos_revisita:${rev.id}`);
+            try {
+              await deleteRevisitaFromFirestore(rev.id);
+            } catch (err) {
+              console.error('Error deleting associated revisit from Firestore:', err);
+            }
+          }
+        }
+
         try {
           await deleteVisitaFromFirestore(id);
         } catch (err) {
@@ -1202,11 +1230,16 @@ export default function App() {
             lojas={lojas}
             visitas={visitas}
             revisitas={revisitas}
+            planos={planos}
             onNavigate={navigateTo}
             onOpenLojaForm={handleOpenLojaForm}
             onOpenVisitaModal={handleOpenVisitaModal}
             onOpenRevisitaModal={handleOpenRevisitaModal}
             onViewPhoto={setPhotoViewerUrl}
+            onExcluirPlano={handleExcluirPlano}
+            onExcluirVisita={handleExcluirVisita}
+            onExcluirRevisita={handleExcluirRevisita}
+            canExcluir={currentUser?.nome?.trim().toLowerCase() === 'kadu'}
           />
         )}
 
@@ -1222,6 +1255,7 @@ export default function App() {
             onExcluirPlano={handleExcluirPlano}
             planSemanaOffset={planSemanaOffset}
             setPlanSemanaOffset={setPlanSemanaOffset}
+            canExcluir={currentUser?.nome?.trim().toLowerCase() === 'kadu'}
           />
         )}
 
@@ -1244,6 +1278,7 @@ export default function App() {
             onOpenVisitaModal={handleOpenVisitaModal}
             onNavigate={navigateTo}
             onRescheduleRevisita={handleRescheduleRevisita}
+            canExcluir={currentUser?.nome?.trim().toLowerCase() === 'kadu'}
           />
         )}
 
