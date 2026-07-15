@@ -170,80 +170,106 @@ export default function App() {
     setToastTimer(timer);
   };
 
-  // On mount: load database states from local storage or populate seed data
+  // On mount: load database states from local storage or populate seed data, and sync with Firestore in real time
   useEffect(() => {
-    // 1. Lojas
+    // 1. First, load from localStorage if available to ensure instant, zero-delay boot
     const storedLojas = localStorage.getItem('lojas');
     if (storedLojas) {
       try {
         const parsed = JSON.parse(storedLojas) as Loja[];
         const filtered = parsed.filter(l => l.filial !== '6' && l.filial !== '28' && l.id !== 'loja_6' && l.id !== 'loja_28');
         setLojas(filtered);
-        if (filtered.length !== parsed.length) {
-          localStorage.setItem('lojas', JSON.stringify(filtered));
-        }
-      } catch (e) {
-        setLojas(INITIAL_LOJAS);
-        localStorage.setItem('lojas', JSON.stringify(INITIAL_LOJAS));
-      }
-    } else {
-      setLojas(INITIAL_LOJAS);
-      localStorage.setItem('lojas', JSON.stringify(INITIAL_LOJAS));
+      } catch (e) {}
     }
 
-    // 2. Users
     const storedUsers = localStorage.getItem('users');
     if (storedUsers) {
       try {
         setUsers(JSON.parse(storedUsers));
       } catch (e) {
         setUsers(INITIAL_USERS);
-        localStorage.setItem('users', JSON.stringify(INITIAL_USERS));
       }
     } else {
       setUsers(INITIAL_USERS);
-      localStorage.setItem('users', JSON.stringify(INITIAL_USERS));
     }
 
-    // 3. Visitas
     const storedVisitas = localStorage.getItem('visitas');
     if (storedVisitas) {
       try {
         setVisitas(JSON.parse(storedVisitas));
-      } catch (e) {
-        setVisitas([]);
-      }
+      } catch (e) {}
     }
 
-    // 4. Planos
     const storedPlanos = localStorage.getItem('planos');
     if (storedPlanos) {
       try {
         setPlanos(JSON.parse(storedPlanos));
-      } catch (e) {
-        setPlanos([]);
-      }
+      } catch (e) {}
     }
 
-    // 5. Config
     const storedConfig = localStorage.getItem('config');
     if (storedConfig) {
       try {
         setConfig(JSON.parse(storedConfig));
-      } catch (e) {
-        setConfig({ prazoPadrao: 15 });
-      }
+      } catch (e) {}
     }
 
-    // 6. Revisitas
     const storedRevisitas = localStorage.getItem('revisitas');
     if (storedRevisitas) {
       try {
         setRevisitas(JSON.parse(storedRevisitas));
-      } catch (e) {
-        setRevisitas([]);
-      }
+      } catch (e) {}
     }
+
+    // Now, run the async Firestore seed to ensure default data is populated if DB is blank
+    seedDatabaseIfEmpty();
+
+    // Subscribe to all Firestore collections for real-time live synchronization
+    const unsubscribeLojas = subscribeToCollection<Loja>('lojas', (items) => {
+      if (items && items.length > 0) {
+        const filtered = items.filter(l => l.filial !== '6' && l.filial !== '28' && l.id !== 'loja_6' && l.id !== 'loja_28');
+        setLojas(filtered);
+        localStorage.setItem('lojas', JSON.stringify(filtered));
+      }
+    });
+
+    const unsubscribeUsers = subscribeToCollection<User>('users', (items) => {
+      if (items && items.length > 0) {
+        setUsers(items);
+        localStorage.setItem('users', JSON.stringify(items));
+      }
+    });
+
+    const unsubscribeVisitas = subscribeToCollection<Visita>('visitas', (items) => {
+      setVisitas(items);
+      localStorage.setItem('visitas', JSON.stringify(items));
+    });
+
+    const unsubscribePlanos = subscribeToCollection<Plano>('planos', (items) => {
+      setPlanos(items);
+      localStorage.setItem('planos', JSON.stringify(items));
+    });
+
+    const unsubscribeRevisitas = subscribeToCollection<Revisita>('revisitas', (items) => {
+      setRevisitas(items);
+      localStorage.setItem('revisitas', JSON.stringify(items));
+    });
+
+    const unsubscribeConfig = subscribeToDoc<Config>('config', 'global', (item) => {
+      if (item) {
+        setConfig(item);
+        localStorage.setItem('config', JSON.stringify(item));
+      }
+    });
+
+    return () => {
+      unsubscribeLojas();
+      unsubscribeUsers();
+      unsubscribeVisitas();
+      unsubscribePlanos();
+      unsubscribeRevisitas();
+      unsubscribeConfig();
+    };
   }, []);
 
   // Sync state changes to local storage when updated
@@ -377,12 +403,18 @@ export default function App() {
     setLojaFormOpen(true);
   };
 
-  const handleSaveLoja = (formData: any) => {
+  const handleSaveLoja = async (formData: any) => {
     if (editingLoja) {
       // Editing
-      const updated = lojas.map((l) => (l.id === editingLoja.id ? { ...l, ...formData } : l));
+      const updatedLoja = { ...editingLoja, ...formData };
+      const updated = lojas.map((l) => (l.id === editingLoja.id ? updatedLoja : l));
       saveLojasToStorage(updated);
-      triggerToast('Cadastro de loja atualizado!');
+      try {
+        await saveLojaToFirestore(updatedLoja);
+        triggerToast('Cadastro de loja atualizado!');
+      } catch (err) {
+        console.error('Error saving store to Firestore:', err);
+      }
     } else {
       // Creating
       const newId = `loja_${Date.now()}`;
@@ -392,7 +424,12 @@ export default function App() {
         ...formData,
       };
       saveLojasToStorage([...lojas, newLoja]);
-      triggerToast('Nova loja cadastrada com sucesso!');
+      try {
+        await saveLojaToFirestore(newLoja);
+        triggerToast('Nova loja cadastrada com sucesso!');
+      } catch (err) {
+        console.error('Error creating store in Firestore:', err);
+      }
     }
     setLojaFormOpen(false);
   };
@@ -401,7 +438,7 @@ export default function App() {
     requestConfirmation(
       'Excluir Loja',
       'Deseja realmente excluir esta loja e todo o histórico associado? Esta ação é irreversível.',
-      () => {
+      async () => {
         const filteredLojas = lojas.filter((l) => l.id !== lojaId);
         const filteredVisitas = visitas.filter((v) => v.lojaId !== lojaId);
         const filteredPlanos = planos.filter((p) => p.lojaId !== lojaId);
@@ -409,6 +446,21 @@ export default function App() {
         saveLojasToStorage(filteredLojas);
         saveVisitasToStorage(filteredVisitas);
         savePlanosToStorage(filteredPlanos);
+
+        try {
+          await deleteLojaFromFirestore(lojaId);
+          // Delete associated visits & plans from Firestore as well
+          const visitsToDelete = visitas.filter((v) => v.lojaId === lojaId);
+          for (const v of visitsToDelete) {
+            await deleteVisitaFromFirestore(v.id);
+          }
+          const plansToDelete = planos.filter((p) => p.lojaId === lojaId);
+          for (const p of plansToDelete) {
+            await deletePlanoFromFirestore(p.id);
+          }
+        } catch (err) {
+          console.error('Error deleting store from Firestore:', err);
+        }
 
         setLojaFormOpen(false);
         triggerToast('Loja excluída com sucesso.');
@@ -506,7 +558,7 @@ export default function App() {
     }
   };
 
-  const handleSaveVisita = () => {
+  const handleSaveVisita = async () => {
     if (!vData) {
       triggerToast('Defina a data da visita.');
       return;
@@ -531,6 +583,15 @@ export default function App() {
         concluido: false,
       }));
       savePlanosToStorage([...planos, ...novosPlanos]);
+      
+      try {
+        for (const p of novosPlanos) {
+          await savePlanoToFirestore(p);
+        }
+      } catch (err) {
+        console.error('Error saving plans to Firestore:', err);
+      }
+
       setVisitaFormOpen(false);
       triggerToast(`Visita agendada com sucesso para ${selectedLojaIdsForVisita.length} ${selectedLojaIdsForVisita.length === 1 ? 'filial' : 'filiais'}!`);
       return;
@@ -564,10 +625,23 @@ export default function App() {
     // Save visit
     const updatedVisitas = [...visitas, newVisita];
     saveVisitasToStorage(updatedVisitas);
+    
+    try {
+      await saveVisitaToFirestore(newVisita);
+    } catch (err) {
+      console.error('Error saving visit to Firestore:', err);
+    }
 
     // Check off scheduled planning if associated
     const basePlanos = associatedPlanoId
-      ? planos.map((p) => (p.id === associatedPlanoId ? { ...p, concluido: true } : p))
+      ? planos.map((p) => {
+          if (p.id === associatedPlanoId) {
+            const updatedP = { ...p, concluido: true };
+            savePlanoToFirestore(updatedP).catch(console.error);
+            return updatedP;
+          }
+          return p;
+        })
       : planos;
 
     // Automatically calculate future revisit date (periodicity)
@@ -600,6 +674,12 @@ export default function App() {
     };
 
     saveRevisitasToStorage([...revisitas, newRevisita]);
+    try {
+      await saveRevisitaToFirestore(newRevisita);
+    } catch (err) {
+      console.error('Error saving revisit to Firestore:', err);
+    }
+
     savePlanosToStorage(basePlanos);
 
     // Close registration modal
@@ -609,7 +689,7 @@ export default function App() {
     triggerToast('Relatório de visita gravado e revisita agendada automaticamente!');
   };
 
-  const handleSaveReturnPlano = () => {
+  const handleSaveReturnPlano = async () => {
     if (!returnLojaId || !returnData) {
       triggerToast('Selecione a loja e data agendada.');
       return;
@@ -623,6 +703,11 @@ export default function App() {
       concluido: false,
     };
     savePlanosToStorage([...planos, newPlano]);
+    try {
+      await savePlanoToFirestore(newPlano);
+    } catch (err) {
+      console.error('Error saving plan to Firestore:', err);
+    }
 
     // Automatically create a corresponding Revisita as per Step 3!
     const originalVisita = visitas[visitas.length - 1] || null;
@@ -641,6 +726,11 @@ export default function App() {
       temFotos: false,
     };
     saveRevisitasToStorage([...revisitas, newRevisita]);
+    try {
+      await saveRevisitaToFirestore(newRevisita);
+    } catch (err) {
+      console.error('Error saving revisit to Firestore:', err);
+    }
 
     setReturnModalOpen(false);
     triggerToast('Agendamento de retorno e revisita automática gravados!');
@@ -689,7 +779,7 @@ export default function App() {
     setRevPendingPhotos(revPendingPhotos.filter((_, i) => i !== index));
   };
 
-  const handleSaveRevisitaExecution = () => {
+  const handleSaveRevisitaExecution = async () => {
     if (!selectedRevisita) return;
 
     const updatedRevisitaObj = {
@@ -712,6 +802,11 @@ export default function App() {
     }
 
     saveRevisitasToStorage(baseRevisitas);
+    try {
+      await saveRevisitaToFirestore(updatedRevisitaObj);
+    } catch (err) {
+      console.error('Error saving revisit execution to Firestore:', err);
+    }
     setRevisitaFormOpen(false);
     setRelatoriosActiveTab('realizadas');
     navigateTo('relatorios');
@@ -722,10 +817,15 @@ export default function App() {
     requestConfirmation(
       'Excluir Revisita',
       'Deseja realmente excluir esta revisita? Esta ação é irreversível.',
-      () => {
+      async () => {
         const updated = revisitas.filter((r) => r.id !== id);
         saveRevisitasToStorage(updated);
         localStorage.removeItem(`fotos_revisita:${id}`);
+        try {
+          await deleteRevisitaFromFirestore(id);
+        } catch (err) {
+          console.error('Error deleting revisit from Firestore:', err);
+        }
         triggerToast('Revisita excluída com sucesso.');
       }
     );
@@ -745,7 +845,7 @@ export default function App() {
     setPlanoFormOpen(true);
   };
 
-  const handleSavePlano = () => {
+  const handleSavePlano = async () => {
     if (pLojaIds.length === 0) {
       triggerToast('Selecione ao menos uma filial.');
       return;
@@ -769,6 +869,13 @@ export default function App() {
     }));
 
     savePlanosToStorage([...planos, ...novosPlanos]);
+    try {
+      for (const p of novosPlanos) {
+        await savePlanoToFirestore(p);
+      }
+    } catch (err) {
+      console.error('Error saving plans to Firestore:', err);
+    }
     setPlanoFormOpen(false);
     triggerToast(`Agenda registrada com sucesso para ${pLojaIds.length} ${pLojaIds.length === 1 ? 'filial' : 'filiais'}!`);
   };
@@ -776,6 +883,7 @@ export default function App() {
   const handleExcluirPlano = (id: string) => {
     const updated = planos.filter((p) => p.id !== id);
     savePlanosToStorage(updated);
+    deletePlanoFromFirestore(id).catch(console.error);
     triggerToast('Visita removida da agenda.');
   };
 
@@ -783,16 +891,21 @@ export default function App() {
     requestConfirmation(
       'Excluir Visita',
       'Deseja realmente excluir este relatório de visita? Esta ação é irreversível.',
-      () => {
+      async () => {
         const updated = visitas.filter((v) => v.id !== id);
         saveVisitasToStorage(updated);
         localStorage.removeItem(`fotos:${id}`);
+        try {
+          await deleteVisitaFromFirestore(id);
+        } catch (err) {
+          console.error('Error deleting visit from Firestore:', err);
+        }
         triggerToast('Relatório de visita excluído com sucesso.');
       }
     );
   };
 
-  const handleConcluirPlano = (planoId: string) => {
+  const handleConcluirPlano = async (planoId: string) => {
     const plano = planos.find((p) => p.id === planoId);
     if (!plano) return;
 
@@ -811,25 +924,47 @@ export default function App() {
     };
 
     // Mark the plan as completed
-    const updatedPlanos = planos.map((p) =>
-      p.id === planoId ? { ...p, concluido: true } : p
-    );
+    const updatedPlanos = planos.map((p) => {
+      if (p.id === planoId) {
+        const updatedP = { ...p, concluido: true };
+        savePlanoToFirestore(updatedP).catch(console.error);
+        return updatedP;
+      }
+      return p;
+    });
 
     saveVisitasToStorage([...visitas, newVisita]);
     savePlanosToStorage(updatedPlanos);
+    try {
+      await saveVisitaToFirestore(newVisita);
+    } catch (err) {
+      console.error('Error saving concluded visit to Firestore:', err);
+    }
     triggerToast('Visita marcada como concluída e registrada nos relatórios!');
   };
 
   // Save changes to thresholds
-  const handleSetPrazoPadrao = (prazo: number) => {
+  const handleSetPrazoPadrao = async (prazo: number) => {
     const updatedConfig = { ...config, prazoPadrao: prazo };
     saveConfigToStorage(updatedConfig);
-    triggerToast(`Prazo padrão definido para ${prazo} dias.`);
+    try {
+      await saveConfigToFirestore(updatedConfig);
+      triggerToast(`Prazo padrão definido para ${prazo} dias.`);
+    } catch (err) {
+      console.error('Error saving config to Firestore:', err);
+    }
   };
 
   // Save changes to current user password
-  const handleUpdatePassword = (userId: string, passwordString: string) => {
-    const updated = users.map((u) => (u.id === userId ? { ...u, senha: passwordString } : u));
+  const handleUpdatePassword = async (userId: string, passwordString: string) => {
+    const updated = users.map((u) => {
+      if (u.id === userId) {
+        const updatedU = { ...u, senha: passwordString };
+        saveUserToFirestore(updatedU).catch(console.error);
+        return updatedU;
+      }
+      return u;
+    });
     saveUsersToStorage(updated);
     if (currentUser && currentUser.id === userId) {
       setCurrentUser({ ...currentUser, senha: passwordString });
@@ -838,20 +973,30 @@ export default function App() {
   };
 
   // Import JSON database backup
-  const handleImportBackup = (backupDataString: string) => {
+  const handleImportBackup = async (backupDataString: string) => {
     try {
       const data = JSON.parse(backupDataString);
       if (data.lojas && Array.isArray(data.lojas)) {
         saveLojasToStorage(data.lojas);
+        for (const l of data.lojas) {
+          await saveLojaToFirestore(l);
+        }
       }
       if (data.visitas && Array.isArray(data.visitas)) {
         saveVisitasToStorage(data.visitas);
+        for (const v of data.visitas) {
+          await saveVisitaToFirestore(v);
+        }
       }
       if (data.planos && Array.isArray(data.planos)) {
         savePlanosToStorage(data.planos);
+        for (const p of data.planos) {
+          await savePlanoToFirestore(p);
+        }
       }
       if (data.config && typeof data.config === 'object') {
         saveConfigToStorage(data.config);
+        await saveConfigToFirestore(data.config);
       }
       triggerToast('Dados operacionais restaurados com sucesso!');
       navigateTo('dashboard');
