@@ -1205,6 +1205,7 @@ export default function App() {
             onNavigate={navigateTo}
             onOpenLojaForm={handleOpenLojaForm}
             onOpenVisitaModal={handleOpenVisitaModal}
+            onOpenRevisitaModal={handleOpenRevisitaModal}
             onViewPhoto={setPhotoViewerUrl}
           />
         )}
@@ -1212,9 +1213,11 @@ export default function App() {
         {currentView === 'planejamento' && (
           <PlanejamentoView
             planos={planos}
+            revisitas={revisitas}
             lojas={lojas}
             users={users}
             onOpenVisitaModal={handleOpenVisitaModal}
+            onOpenRevisitaModal={handleOpenRevisitaModal}
             onOpenPlanoForm={handleOpenPlanoForm}
             onExcluirPlano={handleExcluirPlano}
             planSemanaOffset={planSemanaOffset}

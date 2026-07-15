@@ -159,17 +159,21 @@ export default function RelatoriosView({
       dataToExport = getFilteredRealizadas().map((v) => {
         const l = lojas.find((x) => x.id === v.lojaId);
         return {
-          Tipo: v.type === 'revisita' ? 'Revisita' : 'Visita',
+          Tipo: v.isRevisitada ? 'Visita e Revisita' : 'Visita',
           Loja: l ? l.nome : '—',
           Código: l ? l.codigo : '—',
           Regional: l ? l.regional : '—',
           Cidade: l ? l.cidade : '—',
-          Data: fmtDateBR(v.data),
-          Hora: v.hora,
+          'Data da Visita': fmtDateBR(v.data),
+          'Hora da Visita': v.hora,
           Responsável: v.usuario,
-          Status: v.status || '—',
-          Comentários: v.comentario || '—',
-          'Fotos Anexas': v.temFotos ? 'Sim' : 'Não',
+          Status: v.isRevisitada ? 'REALIZADA E REVISITADA' : (v.status || '—'),
+          'Comentários da Visita': v.comentario || '—',
+          'Data da Revisita': v.isRevisitada ? fmtDateBR(v.dataRevisita) : '—',
+          'Hora da Revisita': v.isRevisitada ? v.horaRevisita : '—',
+          'Observações da Revisita': v.isRevisitada ? (v.comentarioRevisita || '—') : '—',
+          'Fotos Anexas Visita': v.temFotos ? 'Sim' : 'Não',
+          'Fotos Anexas Revisita': v.isRevisitada ? (v.temFotosRevisita ? 'Sim' : 'Não') : '—',
           GPS: v.gps ? `${v.gps.lat.toFixed(5)}, ${v.gps.lng.toFixed(5)}` : '—'
         };
       });
@@ -231,6 +235,17 @@ export default function RelatoriosView({
     
     // Add standard visits
     visitas.forEach((v) => {
+      // Find completed revisits for this specific visit
+      const associatedRevisitas = (revisitas || []).filter(
+        (r) => r.visitaOriginalId === v.id && r.concluida
+      );
+      const isRevisitada = associatedRevisitas.length > 0;
+      const latestRevisita = isRevisitada
+        ? [...associatedRevisitas].sort((a, b) =>
+            (b.dataRealizada || '').localeCompare(a.dataRealizada || '')
+          )[0]
+        : null;
+
       combined.push({
         id: v.id,
         lojaId: v.lojaId,
@@ -244,27 +259,17 @@ export default function RelatoriosView({
         pendenciasCount: v.pendencias ? v.pendencias.length : 0,
         type: 'visita',
         fotos: v.fotos || [],
+        
+        // Revisit integration fields
+        isRevisitada,
+        revisitaId: latestRevisita?.id || '',
+        dataRevisita: latestRevisita?.dataRealizada || '',
+        horaRevisita: latestRevisita?.horaRealizada || '',
+        comentarioRevisita: latestRevisita?.novasObservacoes || '',
+        temFotosRevisita: !!latestRevisita?.temFotos,
+        fotosRevisita: latestRevisita?.fotos || [],
+        pontosMelhoria: latestRevisita?.pontosMelhoria || [],
       });
-    });
-
-    // Add completed revisits
-    revisitas.forEach((r) => {
-      if (r.concluida && r.dataRealizada) {
-        combined.push({
-          id: r.id,
-          lojaId: r.lojaId,
-          data: r.dataRealizada,
-          hora: r.horaRealizada || '00:00',
-          usuario: r.usuario,
-          status: 'REVISITA CONCLUÍDA',
-          comentario: r.novasObservacoes || 'Revisita de pendências finalizada.',
-          temFotos: !!r.temFotos,
-          gps: null,
-          pendenciasCount: r.pontosMelhoria ? r.pontosMelhoria.filter((p) => !p.corrigido).length : 0,
-          type: 'revisita',
-          fotos: r.fotos || [],
-        });
-      }
     });
 
     // Apply filters
@@ -424,7 +429,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          ✅ Realizadas ({visitas.length + revisitas.filter((r) => r.concluida).length})
+          ✅ Realizadas ({visitas.length})
         </button>
         <button
           onClick={() => setActiveTab('planejadas')}
@@ -583,17 +588,25 @@ export default function RelatoriosView({
                         </td>
                         <td className="p-3 text-ink-soft font-semibold">{l ? l.regional : '—'}</td>
                         <td className="p-3 font-medium whitespace-nowrap">
-                          {fmtDateBR(v.data)} <span className="text-ink-faint text-[10.5px]">às {v.hora}</span>
+                          <div>
+                            <div>{fmtDateBR(v.data)} <span className="text-ink-faint text-[10.5px]">às {v.hora}</span></div>
+                            {v.isRevisitada && (
+                              <div className="text-[10px] text-indigo-650 font-bold mt-1 flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" />
+                                Revisitada em {fmtDateBR(v.dataRevisita)} às {v.horaRevisita}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 font-semibold text-brand-navy">{v.usuario}</td>
                         <td className="p-3">
                           <div className="flex flex-col gap-1 items-start">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${
-                              v.type === 'revisita'
-                                ? 'bg-indigo-50 border border-indigo-200 text-indigo-700'
-                                : 'bg-brand-green-soft text-brand-green'
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
+                              v.isRevisitada
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                : 'bg-brand-green-soft border-brand-green/20 text-brand-green'
                             }`}>
-                              {v.type === 'revisita' ? 'Revisita' : 'Visita'}
+                              {v.isRevisitada ? 'Realizada e Revisitada' : 'Visita'}
                             </span>
                             <span className="text-[10px] text-ink-soft font-bold uppercase tracking-wide">
                               {v.status || 'OK'}
@@ -601,46 +614,95 @@ export default function RelatoriosView({
                           </div>
                         </td>
                         <td className="p-3 max-w-[280px]">
-                          <p className="text-ink-soft font-medium text-xs truncate-2-lines break-words">
-                            {v.comentario || <span className="text-ink-faint italic">Sem observações</span>}
-                          </p>
-                          {v.pendenciasCount > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <span className="text-[9px] bg-brand-red-soft text-brand-red px-1 rounded font-bold uppercase tracking-wider">
-                                {v.pendenciasCount} {v.type === 'revisita' ? 'Desvios Pendentes' : 'Pendências'}
-                              </span>
-                            </div>
-                          )}
-                          {v.temFotos && onViewPhoto && (
-                            v.type === 'revisita' ? (
-                              <RevisitaPhotosRenderer revisitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
+                          <div className="space-y-1.5">
+                            <p className="text-ink-soft font-medium text-xs break-words">
+                              {v.comentario || <span className="text-ink-faint italic">Sem observações</span>}
+                            </p>
+                            
+                            {v.isRevisitada && v.comentarioRevisita && (
+                              <div className="p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg text-[11px] text-ink-soft mt-1">
+                                <strong className="text-indigo-800 font-bold uppercase text-[9px] tracking-wider block">Constatações da Revisita:</strong>
+                                <p className="italic font-medium leading-relaxed mt-0.5">"{v.comentarioRevisita}"</p>
+                              </div>
+                            )}
+
+                            {/* Checklist pendências status */}
+                            {v.isRevisitada && v.pontosMelhoria && v.pontosMelhoria.length > 0 ? (
+                              <div className="space-y-1.5 mt-2">
+                                <div className="flex flex-wrap gap-1">
+                                  <span className="text-[9.5px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wider flex items-center gap-1">
+                                    <span>Checklist da Revisita:</span>
+                                    <span className="text-brand-green">{v.pontosMelhoria.filter((p: any) => p.corrigido).length} Corrigidos</span>
+                                    <span>/</span>
+                                    <span className="text-brand-red">{v.pontosMelhoria.filter((p: any) => !p.corrigido).length} Pendentes</span>
+                                  </span>
+                                </div>
+                                <ul className="text-[11px] space-y-1 bg-indigo-50/20 dark:bg-indigo-950/5 border border-indigo-100/60 dark:border-indigo-900/40 rounded-lg p-2 max-w-xs">
+                                  {v.pontosMelhoria.map((p: any, idx: number) => (
+                                    <li key={idx} className="flex items-start gap-1.5 text-ink-soft">
+                                      <span className={`inline-flex items-center justify-center text-[8.5px] font-extrabold px-1 rounded flex-shrink-0 mt-0.5 ${p.corrigido ? 'bg-brand-green/10 text-brand-green border border-brand-green/20' : 'bg-brand-red/10 text-brand-red border border-brand-red/20'}`}>
+                                        {p.corrigido ? 'OK' : 'Pendente'}
+                                      </span>
+                                      <span className={p.corrigido ? 'line-through text-ink-faint' : 'font-medium'}>
+                                        {p.descricao}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             ) : (
-                              <VisitaPhotosRenderer visitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
-                            )
-                          )}
+                              v.pendenciasCount > 0 && (
+                                <div className="space-y-1.5 mt-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    <span className="text-[9px] bg-brand-red-soft text-brand-red px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wider">
+                                      {v.pendenciasCount} Pendências (Aguardando Revisita)
+                                    </span>
+                                  </div>
+                                  <ul className="text-[11px] list-disc list-inside space-y-0.5 text-ink-soft bg-paper/40 p-2 rounded-lg max-w-xs border border-line/40">
+                                    {visitas.find(x => x.id === v.id)?.pendencias?.map((p: string, idx: number) => (
+                                      <li key={idx} className="truncate">• {p}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )
+                            )}
+
+                            {/* Lazy Loaded Photos */}
+                            {v.temFotos && onViewPhoto && (
+                              <div className="mt-1">
+                                {v.isRevisitada && <span className="text-[9px] font-bold text-ink-soft uppercase tracking-wider block mb-0.5">Fotos da Visita:</span>}
+                                <VisitaPhotosRenderer visitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
+                              </div>
+                            )}
+
+                            {v.isRevisitada && v.temFotosRevisita && onViewPhoto && (
+                              <div className="mt-1.5">
+                                <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider block mb-0.5">Fotos da Revisita:</span>
+                                <RevisitaPhotosRenderer revisitaId={v.revisitaId} initialPhotos={v.fotosRevisita} onViewPhoto={onViewPhoto} />
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 text-right whitespace-nowrap no-print">
                           <div className="flex items-center justify-end gap-1.5">
-                            {v.type === 'revisita' ? (
-                              onExcluirRevisita && (
-                                <button
-                                  onClick={() => onExcluirRevisita(v.id)}
-                                  className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
-                                  title="Excluir revisita realizada"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )
-                            ) : (
-                              onExcluirVisita && (
-                                <button
-                                  onClick={() => onExcluirVisita(v.id)}
-                                  className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
-                                  title="Excluir visita realizada"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )
+                            {v.isRevisitada && onExcluirRevisita && (
+                              <button
+                                onClick={() => onExcluirRevisita(v.revisitaId)}
+                                className="p-1.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                                title="Excluir apenas o registro de revisita"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="text-[10px]">Excluir Revisita</span>
+                              </button>
+                            )}
+                            {onExcluirVisita && (
+                              <button
+                                onClick={() => onExcluirVisita(v.id)}
+                                className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
+                                title="Excluir visita realizada completa"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
                         </td>

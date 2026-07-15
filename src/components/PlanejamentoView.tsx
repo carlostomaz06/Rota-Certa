@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loja, Plano, User } from '../types';
+import { Loja, Plano, User, Revisita } from '../types';
 import {
   todayISO,
   startOfWeekISO,
@@ -7,13 +7,15 @@ import {
   fmtDateShort,
   weekdayShort,
 } from '../utils';
-import { Calendar, Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Calendar, Plus, ChevronLeft, ChevronRight, Check, RefreshCw } from 'lucide-react';
 
 interface PlanejamentoViewProps {
   planos: Plano[];
+  revisitas?: Revisita[];
   lojas: Loja[];
   users: User[];
   onOpenVisitaModal: (lojaId: string, planoId: string) => void;
+  onOpenRevisitaModal?: (revisita: Revisita) => void;
   onOpenPlanoForm: () => void;
   onExcluirPlano: (id: string) => void;
   planSemanaOffset: number;
@@ -22,9 +24,11 @@ interface PlanejamentoViewProps {
 
 export default function PlanejamentoView({
   planos,
+  revisitas = [],
   lojas,
   users,
   onOpenVisitaModal,
+  onOpenRevisitaModal,
   onOpenPlanoForm,
   onExcluirPlano,
   planSemanaOffset,
@@ -43,7 +47,7 @@ export default function PlanejamentoView({
             Planejamento Semanal
           </h1>
           <p className="text-sm text-ink-soft mt-1.5">
-            Organize as visitas programadas para a equipe de supervisores
+            Organize as visitas programadas para a equipe de supervisores e acompanhe as revisitas agendadas.
           </p>
         </div>
         <button
@@ -92,7 +96,13 @@ export default function PlanejamentoView({
           const diaPlanos = planos
             .filter((p) => p.data === d && !p.concluido)
             .sort((a, b) => a.usuario.localeCompare(b.usuario));
+            
+          const diaRevisitas = revisitas
+            .filter((r) => r.dataPlanejada === d && !r.concluida)
+            .sort((a, b) => a.usuario.localeCompare(b.usuario));
+
           const isToday = d === hoje;
+          const temAgendamentos = diaPlanos.length > 0 || diaRevisitas.length > 0;
 
           return (
             <div
@@ -111,53 +121,103 @@ export default function PlanejamentoView({
                 </span>
               </h4>
 
-              {/* Day scheduled planned visits */}
+              {/* Day scheduled planned visits & revisits */}
               <div className="flex-1 space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
-                {diaPlanos.length > 0 ? (
-                  diaPlanos.map((p) => {
-                    const l = lojas.find((x) => x.id === p.lojaId);
-                    return (
-                      <div
-                        key={p.id}
-                        className="bg-paper/40 border border-line/70 rounded-lg p-2 text-xs space-y-1.5 shadow-2xs hover:border-line transition-all"
-                      >
-                        <div className="font-bold text-ink leading-tight truncate">
-                          {l ? l.nome : 'Loja desconhecida'}
-                        </div>
-                        <div className="text-[10px] text-ink-soft flex items-center gap-1">
-                          <span className="font-semibold truncate">{p.usuario}</span>
-                          {p.concluido && (
-                            <span className="flex items-center gap-0.5 text-brand-green font-bold">
-                              · <Check className="w-2.5 h-2.5" /> Visita realizada
-                            </span>
-                          )}
-                        </div>
-
-                        {p.obs && (
-                          <div className="text-[9.5px] italic text-ink-faint bg-paper p-1 rounded-sm line-clamp-2">
-                            "{p.obs}"
+                {temAgendamentos ? (
+                  <>
+                    {/* Standard Planned Visits */}
+                    {diaPlanos.map((p) => {
+                      const l = lojas.find((x) => x.id === p.lojaId);
+                      return (
+                        <div
+                          key={p.id}
+                          className="bg-paper/40 border border-line/70 rounded-lg p-2 text-xs space-y-1.5 shadow-2xs hover:border-line transition-all"
+                        >
+                          <div className="font-bold text-ink leading-tight truncate">
+                            {l ? l.nome : 'Loja desconhecida'}
                           </div>
-                        )}
+                          <div className="text-[10px] text-ink-soft flex items-center gap-1">
+                            <span className="font-semibold truncate">{p.usuario}</span>
+                            {p.concluido && (
+                              <span className="flex items-center gap-0.5 text-brand-green font-bold">
+                                · <Check className="w-2.5 h-2.5" /> Visita realizada
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="flex gap-2 pt-1 border-t border-line/40">
-                          {!p.concluido && (
-                            <button
-                              onClick={() => onOpenVisitaModal(p.lojaId, p.id)}
-                              className="text-[10.5px] font-bold text-brand-accent hover:underline cursor-pointer"
-                            >
-                              Registrar
-                            </button>
+                          {p.obs && (
+                            <div className="text-[9.5px] italic text-ink-faint bg-paper p-1 rounded-sm line-clamp-2">
+                              "{p.obs}"
+                            </div>
                           )}
-                          <button
-                            onClick={() => onExcluirPlano(p.id)}
-                            className="text-[10.5px] font-bold text-brand-red hover:underline cursor-pointer ml-auto"
-                          >
-                            Remover
-                          </button>
+
+                          <div className="flex gap-2 pt-1 border-t border-line/40">
+                            {!p.concluido && (
+                              <button
+                                onClick={() => onOpenVisitaModal(p.lojaId, p.id)}
+                                className="text-[10.5px] font-bold text-brand-accent hover:underline cursor-pointer"
+                              >
+                                Registrar
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onExcluirPlano(p.id)}
+                              className="text-[10.5px] font-bold text-brand-red hover:underline cursor-pointer ml-auto"
+                            >
+                              Remover
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+
+                    {/* Scheduled Pending Revisits */}
+                    {diaRevisitas.map((r) => {
+                      const l = lojas.find((x) => x.id === r.lojaId);
+                      return (
+                        <div
+                          key={r.id}
+                          className="bg-indigo-50/40 border border-indigo-100 dark:bg-indigo-950/10 dark:border-indigo-900/40 rounded-lg p-2 text-xs space-y-1.5 shadow-2xs hover:border-indigo-200 dark:hover:border-indigo-800 transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="font-bold text-indigo-950 dark:text-indigo-200 leading-tight truncate flex-1">
+                              {l ? l.nome : 'Loja desconhecida'}
+                            </div>
+                            <span className="text-[8px] bg-indigo-100 text-indigo-700 font-extrabold uppercase px-1 py-0.2 rounded flex-shrink-0">
+                              Revisita
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                            <span className="font-semibold truncate">{r.usuario}</span>
+                          </div>
+
+                          {r.pontosMelhoria.length > 0 && (
+                            <div className="text-[9.5px] text-ink-soft bg-paper/70 p-1 rounded-md space-y-0.5 max-h-[60px] overflow-y-auto">
+                              <span className="font-bold text-[8.5px] uppercase text-indigo-800 dark:text-indigo-400 block mb-0.5">Pendências:</span>
+                              {r.pontosMelhoria.map((item, idx) => (
+                                <div key={idx} className="truncate flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
+                                  <span className="truncate">{item.descricao}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 pt-1 border-t border-indigo-100 dark:border-indigo-950">
+                            {onOpenRevisitaModal && (
+                              <button
+                                onClick={() => onOpenRevisitaModal(r)}
+                                className="text-[10.5px] font-bold text-indigo-700 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline cursor-pointer flex items-center gap-0.5"
+                              >
+                                <RefreshCw className="w-2.5 h-2.5 animate-spin-slow" />
+                                Registrar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 ) : (
                   <p className="text-[10.5px] text-ink-faint text-center py-4 italic">
                     Sem agendamentos
