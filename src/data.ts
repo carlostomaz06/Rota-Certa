@@ -59,7 +59,9 @@ export const INITIAL_USERS: User[] = [
   { id: 'user_1', nome: "Gois",      email: "gois@alvorada.com",      senha: "1234" },
   { id: 'user_2', nome: "Natanael",  email: "natanael@alvorada.com",  senha: "1234" },
   { id: 'user_3', nome: "Kadu",      email: "kadu@alvorada.com",      senha: "1234" },
-  { id: 'user_4', nome: "Natalia",   email: "natalia@alvorada.com",   senha: "1234" }
+  { id: 'user_4', nome: "Natalia",   email: "natalia@alvorada.com",   senha: "1234" },
+  { id: 'user_5', nome: "David",     email: "david@alvorada.com",     senha: "1234" },
+  { id: 'user_6', nome: "Kamyle",    email: "kamyle@alvorada.com",    senha: "1234" }
 ];
 
 export const STATUS_OPCOES = [

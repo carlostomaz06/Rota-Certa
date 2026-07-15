@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Config } from '../types';
-import { Sun, Moon, Download, Shield, Eye, EyeOff } from 'lucide-react';
+import { Sun, Moon, Download, Shield, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { todayISO } from '../utils';
 
 interface ConfigViewProps {
@@ -11,6 +11,7 @@ interface ConfigViewProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onUpdatePassword: (userId: string, newPw: string) => void;
+  onAddUser: (nome: string, email: string, senha: string) => void;
   onImportBackup: (backupData: string) => void;
   lojas: any[];
   visitas: any[];
@@ -26,6 +27,7 @@ export default function ConfigView({
   theme,
   onToggleTheme,
   onUpdatePassword,
+  onAddUser,
   onImportBackup,
   lojas,
   visitas,
@@ -34,6 +36,43 @@ export default function ConfigView({
 }: ConfigViewProps) {
   const [newPw, setNewPw] = useState(currentUser?.senha || '');
   const [showPw, setShowPw] = useState(false);
+
+  const [cadNome, setCadNome] = useState('');
+  const [cadEmail, setCadEmail] = useState('');
+  const [cadSenha, setCadSenha] = useState('1234');
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const handleNomeChange = (val: string) => {
+    setCadNome(val);
+    const sanitized = val.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '');
+    if (sanitized) {
+      setCadEmail(`${sanitized}@alvorada.com`);
+    } else {
+      setCadEmail('');
+    }
+  };
+
+  const handleAddUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cadNome.trim()) {
+      toast('Informe o nome do supervisor!');
+      return;
+    }
+    if (!cadEmail.trim()) {
+      toast('Informe o e-mail do supervisor!');
+      return;
+    }
+    if (!cadSenha.trim()) {
+      toast('Informe uma senha inicial!');
+      return;
+    }
+
+    onAddUser(cadNome.trim(), cadEmail.trim(), cadSenha.trim());
+    setCadNome('');
+    setCadEmail('');
+    setCadSenha('1234');
+    setShowAddForm(false);
+  };
 
   // Trigger JSON file backup export
   const exportarBackup = () => {
@@ -162,9 +201,92 @@ export default function ConfigView({
 
       {/* Users table */}
       <div className="space-y-3">
-        <h3 className="font-condensed text-lg font-bold text-ink uppercase tracking-wide">
-          Supervisores Cadastrados
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-condensed text-lg font-bold text-ink uppercase tracking-wide">
+            Supervisores Cadastrados
+          </h3>
+          <button
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              if (!showAddForm) {
+                setCadNome('');
+                setCadEmail('');
+                setCadSenha('1234');
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-accent hover:bg-brand-accent/90 text-white font-bold text-xs rounded-lg shadow-sm transition-all active:scale-95 cursor-pointer"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Cadastrar Novo
+          </button>
+        </div>
+
+        {showAddForm && (
+          <form onSubmit={handleAddUserSubmit} className="bg-card border-2 border-brand-accent/30 rounded-xl p-5 shadow-lg space-y-4 animate-fade-in">
+            <h4 className="font-condensed text-sm font-bold text-ink uppercase tracking-wide flex items-center gap-1.5 text-brand-accent">
+              <UserPlus className="w-4 h-4" /> Cadastrar Novo Supervisor
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
+                  Nome do Supervisor
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: David"
+                  value={cadNome}
+                  onChange={(e) => handleNomeChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-line rounded-lg text-xs bg-paper/40 text-ink outline-none focus:border-brand-accent font-semibold"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
+                  Email Institucional
+                </label>
+                <input
+                  type="email"
+                  placeholder="Ex: david@alvorada.com"
+                  value={cadEmail}
+                  onChange={(e) => setCadEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-line rounded-lg text-xs bg-paper/40 text-ink outline-none focus:border-brand-accent font-mono"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
+                  Senha Inicial
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 1234"
+                  value={cadSenha}
+                  onChange={(e) => setCadSenha(e.target.value)}
+                  className="w-full px-3 py-2 border border-line rounded-lg text-xs bg-paper/40 text-ink outline-none focus:border-brand-accent font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="px-4 py-1.5 border border-line rounded-lg text-xs font-bold text-ink-soft hover:bg-paper transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-brand-accent hover:bg-brand-accent/90 text-white font-bold text-xs rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+              >
+                Salvar Supervisor
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="bg-card border border-line rounded-xl p-5 shadow-custom space-y-4">
           <div className="overflow-x-auto">

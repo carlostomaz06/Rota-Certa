@@ -1004,6 +1004,40 @@ export default function App() {
     triggerToast('Senha pessoal redefinida!');
   };
 
+  const handleCreateUser = async (nome: string, email: string, senha: string) => {
+    const trimmedNome = nome.trim();
+    const trimmedEmail = email.trim();
+    const trimmedSenha = senha.trim();
+
+    if (!trimmedNome || !trimmedEmail || !trimmedSenha) {
+      triggerToast('Preencha todos os campos do supervisor!');
+      return;
+    }
+
+    // Check for duplicates
+    if (users.some((u) => u.nome.toLowerCase() === trimmedNome.toLowerCase() || u.email.toLowerCase() === trimmedEmail.toLowerCase())) {
+      triggerToast('Este supervisor ou e-mail já está cadastrado!');
+      return;
+    }
+
+    const newUser: User = {
+      id: `user_${Date.now()}`,
+      nome: trimmedNome,
+      email: trimmedEmail,
+      senha: trimmedSenha
+    };
+
+    const updated = [...users, newUser];
+    saveUsersToStorage(updated);
+    try {
+      await saveUserToFirestore(newUser);
+      triggerToast(`Supervisor ${trimmedNome} cadastrado com sucesso!`);
+    } catch (err) {
+      console.error('Error saving new user to Firestore:', err);
+      triggerToast('Supervisor cadastrado localmente.');
+    }
+  };
+
   // Import JSON database backup
   const handleImportBackup = async (backupDataString: string) => {
     try {
@@ -1219,6 +1253,7 @@ export default function App() {
             theme={theme}
             onToggleTheme={handleToggleTheme}
             onUpdatePassword={handleUpdatePassword}
+            onAddUser={handleCreateUser}
             onImportBackup={handleImportBackup}
             lojas={lojas}
             visitas={visitas}

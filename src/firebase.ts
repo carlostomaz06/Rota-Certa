@@ -37,9 +37,10 @@ export async function seedDatabaseIfEmpty() {
     }
 
     const usersSnap = await getDocs(usersCol);
-    if (usersSnap.empty) {
-      console.log('Seeding initial users to Firestore...');
-      for (const user of INITIAL_USERS) {
+    const existingUserIds = new Set(usersSnap.docs.map(doc => doc.id));
+    for (const user of INITIAL_USERS) {
+      if (!existingUserIds.has(user.id)) {
+        console.log(`Seeding missing user ${user.nome} to Firestore...`);
         await setDoc(doc(db, 'users', user.id), user);
       }
     }
