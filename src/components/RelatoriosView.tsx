@@ -490,7 +490,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          ✅ Realizadas ({visitas.length})
+          ✅ Realizadas ({visitas.length + (revisitas || []).filter((r) => r.concluida).length})
         </button>
         <button
           onClick={() => setActiveTab('planejadas')}

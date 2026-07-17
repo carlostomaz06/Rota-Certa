@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loja, Visita, Plano } from '../types';
+import { Loja, Visita, Plano, Revisita } from '../types';
 import { Search, Plus } from 'lucide-react';
 import LojaMiniCard from './LojaMiniCard';
 import { todayISO } from '../utils';
@@ -7,6 +7,7 @@ import { todayISO } from '../utils';
 interface LojasViewProps {
   lojas: Loja[];
   visitas: Visita[];
+  revisitas?: Revisita[];
   planos: Plano[];
   onNavigate: (view: string, param?: string) => void;
   onOpenLojaForm: (lojaId?: string) => void;
@@ -21,6 +22,7 @@ interface LojasViewProps {
 export default function LojasView({
   lojas,
   visitas,
+  revisitas = [],
   planos,
   onNavigate,
   onOpenLojaForm,
@@ -35,16 +37,24 @@ export default function LojasView({
 
   // Helper to compute status for each store
   const getStatusInfo = (loja: Loja) => {
-    const lojaVisitas = visitas
+    const standardVisits = visitas
       .filter((v) => v.lojaId === loja.id)
-      .sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+      .map((v) => ({ data: v.data, hora: v.hora }));
+
+    const completedRevisitas = (revisitas || [])
+      .filter((r) => r.lojaId === loja.id && r.concluida)
+      .map((r) => ({ data: r.dataRealizada || r.dataPlanejada, hora: r.horaRealizada || '12:00' }));
+
+    const allVisits = [...standardVisits, ...completedRevisitas].sort((a, b) =>
+      (b.data + b.hora).localeCompare(a.data + a.hora)
+    );
 
     const proximoPlano = planos
       .filter((p) => p.lojaId === loja.id && !p.concluido && p.data >= hoje)
       .sort((a, b) => a.data.localeCompare(b.data))[0];
     const proximaData = proximoPlano ? proximoPlano.data : null;
 
-    if (lojaVisitas.length === 0) {
+    if (allVisits.length === 0) {
       return { 
         status: 'nunca' as const, 
         diasRestantes: null, 
@@ -53,7 +63,7 @@ export default function LojasView({
       };
     }
 
-    const ultima = lojaVisitas[0];
+    const ultima = allVisits[0];
     const prazo = loja.prazo || 15;
     const proximaDate = new Date(ultima.data);
     proximaDate.setDate(proximaDate.getDate() + prazo);

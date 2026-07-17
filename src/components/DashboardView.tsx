@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loja, Visita, Plano } from '../types';
+import { Loja, Visita, Plano, Revisita } from '../types';
 import { todayISO, startOfWeekISO, weekDaysFrom, fmtDateBR, fmtDateShort } from '../utils';
 import DashboardChart from './DashboardChart';
 import LojaMiniCard from './LojaMiniCard';
@@ -8,6 +8,7 @@ import { Store, Check, Clock, AlertTriangle, Calendar, Plus } from 'lucide-react
 interface DashboardViewProps {
   lojas: Loja[];
   visitas: Visita[];
+  revisitas?: Revisita[];
   planos: Plano[];
   onNavigate: (view: string, param?: string) => void;
   onOpenVisitaModal: (lojaId?: string) => void;
@@ -16,6 +17,7 @@ interface DashboardViewProps {
 export default function DashboardView({
   lojas,
   visitas,
+  revisitas = [],
   planos,
   onNavigate,
   onOpenVisitaModal,
@@ -26,16 +28,24 @@ export default function DashboardView({
 
   // Helper to compute status for each store
   const getStatusInfo = (loja: Loja) => {
-    const lojaVisitas = visitas
+    const standardVisits = visitas
       .filter((v) => v.lojaId === loja.id)
-      .sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+      .map((v) => ({ data: v.data, hora: v.hora }));
+
+    const completedRevisitas = (revisitas || [])
+      .filter((r) => r.lojaId === loja.id && r.concluida)
+      .map((r) => ({ data: r.dataRealizada || r.dataPlanejada, hora: r.horaRealizada || '12:00' }));
+
+    const allVisits = [...standardVisits, ...completedRevisitas].sort((a, b) =>
+      (b.data + b.hora).localeCompare(a.data + a.hora)
+    );
 
     const proximoPlano = planos
       .filter((p) => p.lojaId === loja.id && !p.concluido && p.data >= hoje)
       .sort((a, b) => a.data.localeCompare(b.data))[0];
     const proximaData = proximoPlano ? proximoPlano.data : null;
 
-    if (lojaVisitas.length === 0) {
+    if (allVisits.length === 0) {
       return { 
         status: 'nunca' as const, 
         diasRestantes: null, 
@@ -44,7 +54,7 @@ export default function DashboardView({
       };
     }
 
-    const ultima = lojaVisitas[0];
+    const ultima = allVisits[0];
     const prazo = loja.prazo || 15;
     const proximaDate = new Date(ultima.data);
     proximaDate.setDate(proximaDate.getDate() + prazo);
@@ -81,10 +91,11 @@ export default function DashboardView({
   const regionaisSet = new Set(lojas.map((l) => l.regional).filter(Boolean));
   const regionaisCount = regionaisSet.size;
 
-  // Visitadas na semana
-  const visitedThisWeekIds = new Set(
-    visitas.filter((v) => weekDays.includes(v.data)).map((v) => v.lojaId)
-  );
+  // Visitadas na semana (incluindo revisitas concluídas)
+  const visitedThisWeekIds = new Set([
+    ...visitas.filter((v) => weekDays.includes(v.data)).map((v) => v.lojaId),
+    ...revisitas.filter((r) => r.concluida && r.dataRealizada && weekDays.includes(r.dataRealizada)).map((r) => r.lojaId),
+  ]);
 
   const totalVencidas = statusList.filter((s) => s.status === 'atrasada').length;
   const totalNunca = statusList.filter((s) => s.status === 'nunca').length;

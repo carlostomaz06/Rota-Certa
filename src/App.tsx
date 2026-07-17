@@ -672,28 +672,51 @@ export default function App() {
       dataRevisita = baseDate.toISOString().split('T')[0];
     }
 
-    // Create automatic Revisita Pendente
-    const newRevisita: Revisita = {
-      id: `revisita_${Date.now()}`,
-      visitaOriginalId: newVisita.id,
-      lojaId: selectedLojaForVisita.id,
-      usuario: usuarioStr,
-      dataPlanejada: dataRevisita,
-      concluida: false,
-      pontosMelhoria: vPendencias.map((p) => ({
-        descricao: p,
-        corrigido: false,
-      })),
-      observacoesOriginais: vComentario.trim() || 'Visita concluída.',
-      temFotos: false,
-    };
+    // Only schedule an automatic Revisita if there are actual deviations/pendencies
+    let finalRevisitasList = [...revisitas];
+    if (vPendencias.length > 0) {
+      // Create automatic Revisita Pendente
+      const newRevisita: Revisita = {
+        id: `revisita_${Date.now()}`,
+        visitaOriginalId: newVisita.id,
+        lojaId: selectedLojaForVisita.id,
+        usuario: usuarioStr,
+        dataPlanejada: dataRevisita,
+        concluida: false,
+        pontosMelhoria: vPendencias.map((p) => ({
+          descricao: p,
+          corrigido: false,
+        })),
+        observacoesOriginais: vComentario.trim() || 'Visita concluída.',
+        temFotos: false,
+      };
 
-    saveRevisitasToStorage([...revisitas, newRevisita]);
-    try {
-      await saveRevisitaToFirestore(newRevisita);
-    } catch (err) {
-      console.error('Error saving revisit to Firestore:', err);
+      finalRevisitasList.push(newRevisita);
+      try {
+        await saveRevisitaToFirestore(newRevisita);
+      } catch (err) {
+        console.error('Error saving revisit to Firestore:', err);
+      }
     }
+
+    // Also, mark any older pending revisits for this store as completed because they are superseded by this new standard visit
+    finalRevisitasList = finalRevisitasList.map((r) => {
+      if (r.lojaId === selectedLojaForVisita.id && !r.concluida) {
+        const updatedR = {
+          ...r,
+          concluida: true,
+          dataRealizada: vData,
+          horaRealizada: vHora,
+          novasObservacoes: `Resolvida por visita subsequente em ${vData}.`,
+        };
+        // Update in Firestore
+        saveRevisitaToFirestore(updatedR).catch(console.error);
+        return updatedR;
+      }
+      return r;
+    });
+
+    saveRevisitasToStorage(finalRevisitasList);
 
     savePlanosToStorage(basePlanos);
 
@@ -701,7 +724,11 @@ export default function App() {
     setVisitaFormOpen(false);
     setRelatoriosActiveTab('realizadas');
     navigateTo('relatorios');
-    triggerToast('Relatório de visita gravado e revisita agendada automaticamente!');
+    if (vPendencias.length > 0) {
+      triggerToast('Relatório de visita gravado e revisita agendada automaticamente!');
+    } else {
+      triggerToast('Relatório de visita gravado com sucesso! (Nenhum desvio checklist encontrado)');
+    }
   };
 
   const handleSaveReturnPlano = async () => {
@@ -1202,6 +1229,7 @@ export default function App() {
           <DashboardView
             lojas={lojas}
             visitas={visitas}
+            revisitas={revisitas}
             planos={planos}
             onNavigate={navigateTo}
             onOpenVisitaModal={handleOpenVisitaModal}
@@ -1212,6 +1240,7 @@ export default function App() {
           <LojasView
             lojas={lojas}
             visitas={visitas}
+            revisitas={revisitas}
             planos={planos}
             onNavigate={navigateTo}
             onOpenLojaForm={handleOpenLojaForm}

@@ -133,8 +133,11 @@ export default function LojaDetailView({
   const storeRevisitas = revisitas.filter((r) => r.lojaId === loja.id);
   const storePlanos = (planos || []).filter((p) => p.lojaId === loja.id && !p.concluido);
 
-  // For visual indicators, get the historical standard visits sorted descending
-  const history = [...storeVisits].sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+  // For visual indicators, get the historical standard visits and completed revisits sorted descending
+  const history = [
+    ...storeVisits.map((v) => ({ data: v.data, hora: v.hora })),
+    ...storeRevisitas.filter((r) => r.concluida).map((r) => ({ data: r.dataRealizada || r.dataPlanejada, hora: r.horaRealizada || '12:00' }))
+  ].sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
 
   interface TimelineItem {
     id: string;
