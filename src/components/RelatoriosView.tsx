@@ -285,6 +285,36 @@ export default function RelatoriosView({
       });
     });
 
+    // Add completed revisits as separate entries on their actual date of execution
+    (revisitas || []).forEach((r) => {
+      if (r.concluida) {
+        combined.push({
+          id: `realizada_revisita_${r.id}`,
+          lojaId: r.lojaId,
+          data: r.dataRealizada || r.dataPlanejada,
+          hora: r.horaRealizada || '12:00',
+          usuario: r.usuario,
+          status: 'Revisita Concluída',
+          comentario: r.novasObservacoes || 'Revisita finalizada.',
+          temFotos: !!r.temFotos,
+          gps: null,
+          pendenciasCount: 0,
+          type: 'revisita',
+          fotos: r.fotos || [],
+
+          isRevisitada: false, // It is the revisit itself
+          revisitaId: r.id,
+          dataRevisita: r.dataRealizada || '',
+          horaRevisita: r.horaRealizada || '',
+          comentarioRevisita: r.novasObservacoes || '',
+          temFotosRevisita: !!r.temFotos,
+          fotosRevisita: r.fotos || [],
+          pontosMelhoria: r.pontosMelhoria || [],
+          visitaOriginalId: r.visitaOriginalId,
+        });
+      }
+    });
+
     // Apply filters
     let list = combined;
     if (de) list = list.filter((v) => v.data >= de);
@@ -633,11 +663,13 @@ export default function RelatoriosView({
                         <td className="p-3">
                           <div className="flex flex-col gap-1 items-start">
                             <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
-                              v.isRevisitada
+                              v.type === 'revisita'
+                                ? 'bg-indigo-100 border-indigo-300 text-indigo-800'
+                                : v.isRevisitada
                                 ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
                                 : 'bg-brand-green-soft border-brand-green/20 text-brand-green'
                             }`}>
-                              {v.isRevisitada ? 'Realizada e Revisitada' : 'Visita'}
+                              {v.type === 'revisita' ? 'Revisita Técnica' : v.isRevisitada ? 'Realizada e Revisitada' : 'Visita'}
                             </span>
                             <span className="text-[10px] text-ink-soft font-bold uppercase tracking-wide">
                               {v.status || 'OK'}
@@ -658,7 +690,7 @@ export default function RelatoriosView({
                             )}
 
                             {/* Checklist pendências status */}
-                            {v.isRevisitada && v.pontosMelhoria && v.pontosMelhoria.length > 0 ? (
+                            {(v.isRevisitada || v.type === 'revisita') && v.pontosMelhoria && v.pontosMelhoria.length > 0 ? (
                               <div className="space-y-1.5 mt-2">
                                 <div className="flex flex-wrap gap-1">
                                   <span className="text-[9.5px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wider flex items-center gap-1">
@@ -702,7 +734,11 @@ export default function RelatoriosView({
                             {v.temFotos && onViewPhoto && (
                               <div className="mt-1">
                                 {v.isRevisitada && <span className="text-[9px] font-bold text-ink-soft uppercase tracking-wider block mb-0.5">Fotos da Visita:</span>}
-                                <VisitaPhotosRenderer visitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
+                                {v.type === 'revisita' ? (
+                                  <RevisitaPhotosRenderer revisitaId={v.revisitaId} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
+                                ) : (
+                                  <VisitaPhotosRenderer visitaId={v.id} initialPhotos={v.fotos} onViewPhoto={onViewPhoto} />
+                                )}
                               </div>
                             )}
 
@@ -716,24 +752,37 @@ export default function RelatoriosView({
                         </td>
                         <td className="p-3 text-right whitespace-nowrap no-print">
                           <div className="flex items-center justify-end gap-1.5">
-                            {canExcluir && v.isRevisitada && onExcluirRevisita && (
+                            {canExcluir && v.type === 'revisita' && onExcluirRevisita && (
                               <button
                                 onClick={() => onExcluirRevisita(v.revisitaId)}
-                                className="p-1.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
-                                title="Excluir apenas o registro de revisita"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span className="text-[10px]">Excluir Revisita</span>
-                              </button>
-                            )}
-                            {canExcluir && onExcluirVisita && (
-                              <button
-                                onClick={() => onExcluirVisita(v.id)}
                                 className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
-                                title="Excluir visita realizada completa"
+                                title="Excluir revisita realizada"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                            )}
+                            {canExcluir && v.type !== 'revisita' && (
+                              <>
+                                {v.isRevisitada && onExcluirRevisita && (
+                                  <button
+                                    onClick={() => onExcluirRevisita(v.revisitaId)}
+                                    className="p-1.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                                    title="Excluir apenas o registro de revisita"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span className="text-[10px]">Excluir Revisita</span>
+                                  </button>
+                                )}
+                                {onExcluirVisita && (
+                                  <button
+                                    onClick={() => onExcluirVisita(v.id)}
+                                    className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
+                                    title="Excluir visita realizada completa"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
