@@ -64,7 +64,7 @@ export default function App() {
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [revisitas, setRevisitas] = useState<Revisita[]>([]);
-  const [config, setConfig] = useState<Config>({ prazoPadrao: 15 });
+  const [config, setConfig] = useState<Config>({ prazoPadrao: 45 });
 
   // Navigation State
   const [currentView, setCurrentView] = useState('dashboard');
@@ -354,7 +354,7 @@ export default function App() {
 
       if (!hasRevisitaForVisit && !hasPendingRevisitaForStore) {
         const l = lojas.find((store) => matchLojaId(store.id, storeNormId));
-        const prazoDias = l?.prazo || config.prazoPadrao || 15;
+        const prazoDias = l?.prazo || config.prazoPadrao || 45;
         let dataRevisita = hojeStr;
         try {
           const baseDate = new Date(v.data + 'T12:00:00');
@@ -777,7 +777,7 @@ export default function App() {
     });
 
     // Automatically calculate future revisit date (periodicity)
-    const prazoDias = selectedLojaForVisita.prazo || config.prazoPadrao || 15;
+    const prazoDias = selectedLojaForVisita.prazo || config.prazoPadrao || 45;
     let dataRevisita = todayISO();
     try {
       const baseDate = new Date(vData + 'T12:00:00');
@@ -2296,11 +2296,11 @@ export default function App() {
         </div>
       </Modal>
 
-      {/* Modal: Agendar Retorno em 15 dias */}
+      {/* Modal: Agendar Retorno */}
       <Modal
         isOpen={returnModalOpen}
         onClose={handleSkipReturn}
-        title="Agendar Retorno (15 Dias)"
+        title={`Agendar Retorno (${config.prazoPadrao || 45} Dias)`}
         footer={
           <>
             <button
@@ -2320,7 +2320,7 @@ export default function App() {
       >
         <div className="space-y-4">
           <p className="text-xs text-ink-soft leading-relaxed">
-            Para garantir o acompanhamento técnico contínuo, programe uma visita de retorno para esta filial. Sugerimos um intervalo padrão de <strong>15 dias</strong>, mas você pode personalizar a data abaixo.
+            Para garantir o acompanhamento técnico contínuo, programe uma visita de retorno para esta filial. Sugerimos um intervalo padrão de <strong>{config.prazoPadrao || 45} dias</strong>, mas você pode personalizar a data abaixo.
           </p>
 
           <div className="flex flex-col gap-1">

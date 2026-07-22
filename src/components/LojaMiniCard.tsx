@@ -30,7 +30,7 @@ const STATUS_COLORS = {
 
 export default function LojaMiniCard({ loja, statusInfo, onClick }: LojaMiniCardProps) {
   const { status, diasRestantes } = statusInfo;
-  const prazo = loja.prazo || 15; // default 15 days
+  const prazo = loja.prazo || 45; // default 45 days
 
   // Calculate route line progress percentage
   let percentage = 50;

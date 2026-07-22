@@ -101,7 +101,7 @@ export function calculateStoreStatus(
 
   // 5. Standard routine cycle from last completed visit / retorno
   const ultima = allCompleted[0];
-  const prazo = loja.prazo || 15;
+  const prazo = loja.prazo || 45;
   const proximaDate = new Date(ultima.data + 'T12:00:00');
   proximaDate.setDate(proximaDate.getDate() + prazo);
 

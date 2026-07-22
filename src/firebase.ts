@@ -47,7 +47,7 @@ export async function seedDatabaseIfEmpty() {
 
     // Initialize global config document
     const configDoc = doc(db, 'config', 'global');
-    await setDoc(configDoc, { prazoPadrao: 15 }, { merge: true });
+    await setDoc(configDoc, { prazoPadrao: 45 }, { merge: true });
   } catch (error) {
     console.error('Error seeding database:', error);
   }

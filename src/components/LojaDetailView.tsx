@@ -207,7 +207,7 @@ export default function LojaDetailView({
   const status = statusInfo.status;
   const diasRestantes = statusInfo.diasRestantes;
   const ultimaVisita = statusInfo.ultimaVisita;
-  const prazo = loja.prazo || 15;
+  const prazo = loja.prazo || 45;
 
   // Calculate percentage for visual tracker line
   let percentage = 50;

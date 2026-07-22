@@ -1174,7 +1174,7 @@ export default function RelatoriosView({
                   <div className="grid grid-cols-2 gap-4 text-center border border-dashed border-line rounded-lg p-3 bg-paper/20">
                     <div>
                       <span className="text-[9px] uppercase font-bold text-ink-faint block">Retornos a cada</span>
-                      <span className="text-sm font-extrabold text-brand-navy">{selectedHistoryLoja.prazo || 15} dias</span>
+                      <span className="text-sm font-extrabold text-brand-navy">{selectedHistoryLoja.prazo || 45} dias</span>
                     </div>
                     <div>
                       <span className="text-[9px] uppercase font-bold text-ink-faint block">Supervisor</span>
