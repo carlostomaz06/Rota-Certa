@@ -1,6 +1,8 @@
 import React from 'react';
 import { Loja, Visita, Plano, Revisita } from '../types';
-import { todayISO, startOfWeekISO, weekDaysFrom, fmtDateBR, fmtDateShort } from '../utils';
+import { todayISO, startOfWeekISO, weekDaysFrom, fmtDateBR, fmtDateShort, matchLojaId } from '../utils';
+import { calculateStoreStatus } from '../utils/storeStatus';
+import { INITIAL_LOJAS } from '../data';
 import DashboardChart from './DashboardChart';
 import LojaMiniCard from './LojaMiniCard';
 import { Store, Check, Clock, AlertTriangle, Calendar, Plus } from 'lucide-react';
@@ -26,58 +28,32 @@ export default function DashboardView({
   const monday = startOfWeekISO(hoje, 0);
   const weekDays = weekDaysFrom(monday);
 
+
+  // Robust store finder with fallback
+  const findLoja = (lojaId: string) => {
+    if (!lojaId) return undefined;
+    const cleanId = String(lojaId).trim().toLowerCase();
+    const matcher = (l: any) => {
+      const cleanLId = String(l.id).trim().toLowerCase();
+      const cleanFilial = String(l.filial).trim().toLowerCase();
+      const cleanCodigo = String(l.codigo).trim().toLowerCase();
+      const cleanNome = String(l.nome).trim().toLowerCase();
+      return (
+        cleanLId === cleanId ||
+        cleanFilial === cleanId ||
+        cleanCodigo === cleanId ||
+        cleanLId.replace('loja_', '') === cleanId ||
+        cleanId.replace('loja_', '') === cleanLId ||
+        cleanId.replace('loja_', '') === cleanFilial ||
+        cleanNome === cleanId
+      );
+    };
+    return (lojas || []).find(matcher) || INITIAL_LOJAS.find(matcher);
+  };
+
   // Helper to compute status for each store
   const getStatusInfo = (loja: Loja) => {
-    const standardVisits = visitas
-      .filter((v) => v.lojaId === loja.id)
-      .map((v) => ({ data: v.data, hora: v.hora }));
-
-    const completedRevisitas = (revisitas || [])
-      .filter((r) => r.lojaId === loja.id && r.concluida)
-      .map((r) => ({ data: r.dataRealizada || r.dataPlanejada, hora: r.horaRealizada || '12:00' }));
-
-    const allVisits = [...standardVisits, ...completedRevisitas].sort((a, b) =>
-      (b.data + b.hora).localeCompare(a.data + a.hora)
-    );
-
-    const proximoPlano = planos
-      .filter((p) => p.lojaId === loja.id && !p.concluido && p.data >= hoje)
-      .sort((a, b) => a.data.localeCompare(b.data))[0];
-    const proximaData = proximoPlano ? proximoPlano.data : null;
-
-    if (allVisits.length === 0) {
-      return { 
-        status: 'nunca' as const, 
-        diasRestantes: null, 
-        ultimaVisita: null,
-        proxima: proximaData 
-      };
-    }
-
-    const ultima = allVisits[0];
-    const prazo = loja.prazo || 15;
-    const proximaDate = new Date(ultima.data);
-    proximaDate.setDate(proximaDate.getDate() + prazo);
-    
-    // Calculate days between
-    const tToday = new Date(hoje).getTime();
-    const tProxima = proximaDate.getTime();
-    const diffTime = tProxima - tToday;
-    const dias = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-    let status: 'ok' | 'atencao' | 'atrasada' = 'ok';
-    if (dias < 0) {
-      status = 'atrasada';
-    } else if (dias <= 3) {
-      status = 'atencao';
-    }
-
-    return {
-      status,
-      diasRestantes: dias,
-      ultimaVisita: ultima.data,
-      proxima: proximaData
-    };
+    return calculateStoreStatus(loja, visitas, revisitas, planos, hoje);
   };
 
   const statusList = lojas.map((l) => ({
@@ -261,7 +237,7 @@ export default function DashboardView({
                 .sort((a, b) => a.data.localeCompare(b.data))
                 .slice(0, 10)
                 .map((p) => {
-                  const l = lojas.find((x) => x.id === p.lojaId);
+                  const l = findLoja(p.lojaId);
                   const isHoje = p.data === hoje;
                   // Calculate if date is tomorrow
                   const nextDay = new Date(new Date(hoje + 'T12:00:00').getTime() + 86400000).toISOString().split('T')[0];

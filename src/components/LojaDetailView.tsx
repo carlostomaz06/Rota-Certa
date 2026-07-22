@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Loja, Visita, Revisita, Plano } from '../types';
 import { ArrowLeft, Edit3, Plus, MapPin, AlertTriangle, Clock, Check, Calendar, RefreshCw, Trash2 } from 'lucide-react';
-import { fmtDateBR } from '../utils';
+import { fmtDateBR, matchLojaId } from '../utils';
+import { calculateStoreStatus } from '../utils/storeStatus';
 
 interface LojaDetailViewProps {
   lojaId: string;
@@ -129,9 +130,9 @@ export default function LojaDetailView({
     );
   }
   // Combine standard visits and completed revisits into a single chronological timeline
-  const storeVisits = visitas.filter((v) => v.lojaId === loja.id);
-  const storeRevisitas = revisitas.filter((r) => r.lojaId === loja.id);
-  const storePlanos = (planos || []).filter((p) => p.lojaId === loja.id && !p.concluido);
+  const storeVisits = visitas.filter((v) => matchLojaId(v.lojaId, loja.id));
+  const storeRevisitas = revisitas.filter((r) => matchLojaId(r.lojaId, loja.id));
+  const storePlanos = (planos || []).filter((p) => matchLojaId(p.lojaId, loja.id) && !p.concluido);
 
   // For visual indicators, get the historical standard visits and completed revisits sorted descending
   const history = [
@@ -175,7 +176,7 @@ export default function LojaDetailView({
       usuario: r.usuario,
       data: r.concluida ? (r.dataRealizada || r.dataPlanejada) : r.dataPlanejada,
       hora: r.concluida ? (r.horaRealizada || '00:00') : '00:00',
-      status: r.concluida ? 'Revisita Concluída' : 'Revisita Agendada (Pendente)',
+      status: r.concluida ? 'Retorno Concluído' : 'Retorno Agendado (Pendente)',
       comentario: r.concluida ? (r.novasObservacoes || '') : `Verificação de pendências pós visita original.`,
       temFotos: !!r.temFotos,
       concluida: r.concluida,
@@ -201,34 +202,12 @@ export default function LojaDetailView({
     })),
   ].sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
 
-  // Calculate status info
+  // Calculate status info using unified logic
+  const statusInfo = calculateStoreStatus(loja, visitas, revisitas, storePlanos);
+  const status = statusInfo.status;
+  const diasRestantes = statusInfo.diasRestantes;
+  const ultimaVisita = statusInfo.ultimaVisita;
   const prazo = loja.prazo || 15;
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-
-  let status: 'ok' | 'atencao' | 'atrasada' | 'nunca' = 'nunca';
-  let diasRestantes: number | null = null;
-  let ultimaVisita: string | null = null;
-
-  if (history.length > 0) {
-    const ultima = history[0];
-    ultimaVisita = ultima.data;
-    
-    const [y, m, d] = ultima.data.split('-').map(Number);
-    const proximaDate = new Date(y, m - 1, d);
-    proximaDate.setDate(proximaDate.getDate() + prazo);
-
-    const diffTime = proximaDate.getTime() - hoje.getTime();
-    diasRestantes = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diasRestantes < 0) {
-      status = 'atrasada';
-    } else if (diasRestantes <= 3) {
-      status = 'atencao';
-    } else {
-      status = 'ok';
-    }
-  }
 
   // Calculate percentage for visual tracker line
   let percentage = 50;
@@ -305,7 +284,7 @@ export default function LojaDetailView({
               className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-lg hover:bg-indigo-700 active:scale-95 transition-all shadow-md cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-              Executar Revisita
+              Executar Retorno
             </button>
           )}
           <button
@@ -476,7 +455,7 @@ export default function LojaDetailView({
                           {isRevisita && <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin-slow" />}
                           {isPlano && <Calendar className="w-3.5 h-3.5 text-sky-600" />}
                           {item.usuario}
-                          {isRevisita && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold uppercase">Revisita</span>}
+                          {isRevisita && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-semibold uppercase">Retorno</span>}
                           {isPlano && <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.2 rounded font-semibold uppercase">Agendada</span>}
                         </span>
                         <div className="flex items-center gap-3">
@@ -490,7 +469,7 @@ export default function LojaDetailView({
                                 <button
                                   onClick={() => onExcluirRevisita(item.id)}
                                   className="p-1 text-ink-soft hover:text-brand-red hover:bg-paper rounded transition-colors cursor-pointer"
-                                  title="Excluir revisita"
+                                  title="Excluir retorno"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -546,7 +525,7 @@ export default function LojaDetailView({
 
                       {isRevisita && item.pontosMelhoria && item.pontosMelhoria.length > 0 && (
                         <div className="mt-1 text-xs bg-paper/50 rounded-lg p-2 border border-line/60 max-w-md">
-                          <span className="font-bold text-ink-soft block mb-1">Status das pendências na revisita:</span>
+                          <span className="font-bold text-ink-soft block mb-1">Status das pendências no retorno:</span>
                           <ul className="space-y-1">
                             {item.pontosMelhoria.map((p, idx) => (
                               <li key={idx} className="flex items-center gap-1.5 text-ink-soft">
@@ -573,7 +552,7 @@ export default function LojaDetailView({
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
                           >
                             <RefreshCw className="w-3 h-3 animate-spin-slow" />
-                            Registrar Revisita
+                            Registrar Retorno
                           </button>
                         </div>
                       )}

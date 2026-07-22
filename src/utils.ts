@@ -93,3 +93,83 @@ export function fileToCompressedDataURL(file: File, maxW = 1100, quality = 0.62)
     reader.readAsDataURL(file);
   });
 }
+
+import { INITIAL_LOJAS } from './data';
+
+export function matchLojaId(idA: string | null | undefined, idB: string | null | undefined): boolean {
+  if (!idA || !idB) return false;
+  if (idA === idB) return true;
+
+  const strA = String(idA).trim().toLowerCase();
+  const strB = String(idB).trim().toLowerCase();
+  if (strA === strB) return true;
+
+  const cleanA = strA.replace('loja_', '');
+  const cleanB = strB.replace('loja_', '');
+  if (cleanA === cleanB) return true;
+
+  const numA = cleanA.split('-')[0].replace(/^0+/, '');
+  const numB = cleanB.split('-')[0].replace(/^0+/, '');
+  if (numA && numB && numA === numB && numA !== '') return true;
+
+  const storeA = INITIAL_LOJAS.find(
+    (l) =>
+      l.id.toLowerCase() === strA ||
+      l.id.toLowerCase().replace('loja_', '') === cleanA ||
+      l.filial.toLowerCase() === cleanA ||
+      l.codigo.toLowerCase() === strA ||
+      l.codigo.toLowerCase() === cleanA ||
+      l.nome.toLowerCase() === strA
+  );
+  const storeB = INITIAL_LOJAS.find(
+    (l) =>
+      l.id.toLowerCase() === strB ||
+      l.id.toLowerCase().replace('loja_', '') === cleanB ||
+      l.filial.toLowerCase() === cleanB ||
+      l.codigo.toLowerCase() === strB ||
+      l.codigo.toLowerCase() === cleanB ||
+      l.nome.toLowerCase() === strB
+  );
+
+  if (storeA && storeB) return storeA.id === storeB.id;
+  if (storeA) {
+    return (
+      storeA.id.toLowerCase() === strB ||
+      storeA.id.toLowerCase().replace('loja_', '') === cleanB ||
+      storeA.filial.toLowerCase() === cleanB ||
+      storeA.codigo.toLowerCase() === strB ||
+      storeA.codigo.toLowerCase() === cleanB ||
+      storeA.nome.toLowerCase() === strB
+    );
+  }
+  if (storeB) {
+    return (
+      storeB.id.toLowerCase() === strA ||
+      storeB.id.toLowerCase().replace('loja_', '') === cleanA ||
+      storeB.filial.toLowerCase() === cleanA ||
+      storeB.codigo.toLowerCase() === strA ||
+      storeB.codigo.toLowerCase() === cleanA ||
+      storeB.nome.toLowerCase() === strA
+    );
+  }
+
+  return false;
+}
+
+export function normalizeLojaId(lojaId: string | null | undefined): string {
+  if (!lojaId) return '';
+  const str = String(lojaId).trim().toLowerCase();
+  const clean = str.replace('loja_', '');
+  const found = INITIAL_LOJAS.find(
+    (l) =>
+      l.id.toLowerCase() === str ||
+      l.id.toLowerCase().replace('loja_', '') === clean ||
+      l.filial.toLowerCase() === clean ||
+      l.codigo.toLowerCase() === str ||
+      l.codigo.toLowerCase() === clean ||
+      l.nome.toLowerCase() === str
+  );
+  if (found) return found.id;
+  return `loja_${clean}`;
+}
+

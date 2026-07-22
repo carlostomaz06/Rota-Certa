@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Loja, Visita, User, Plano, Revisita } from '../types';
-import { todayISO, fmtDateBR } from '../utils';
+import { todayISO, fmtDateBR, matchLojaId } from '../utils';
+import { INITIAL_LOJAS } from '../data';
 import {
   FileText,
   Download,
@@ -135,6 +136,30 @@ export default function RelatoriosView({
   const activeTab = propActiveTab || localActiveTab;
   const setActiveTab = onChangeTab || setLocalActiveTab;
 
+  // Robust store finder with fallback to INITIAL_LOJAS to handle ID normalization
+  const findLoja = (lojaId: string) => {
+    if (!lojaId) return undefined;
+    const cleanId = String(lojaId).trim().toLowerCase();
+    
+    const matcher = (l: any) => {
+      const cleanLId = String(l.id).trim().toLowerCase();
+      const cleanFilial = String(l.filial).trim().toLowerCase();
+      const cleanCodigo = String(l.codigo).trim().toLowerCase();
+      const cleanNome = String(l.nome).trim().toLowerCase();
+      return (
+        cleanLId === cleanId ||
+        cleanFilial === cleanId ||
+        cleanCodigo === cleanId ||
+        cleanLId.replace('loja_', '') === cleanId ||
+        cleanId.replace('loja_', '') === cleanLId ||
+        cleanId.replace('loja_', '') === cleanFilial ||
+        cleanNome === cleanId
+      );
+    };
+
+    return (lojas || []).find(matcher) || INITIAL_LOJAS.find(matcher);
+  };
+
   // Filters for Realizadas & Planejadas tabs
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
@@ -170,30 +195,51 @@ export default function RelatoriosView({
     if (activeTab === 'realizadas') {
       sheetName = 'Visitas e Revisitas Realizadas';
       dataToExport = getFilteredRealizadas().map((v) => {
-        const l = lojas.find((x) => x.id === v.lojaId);
-        return {
-          Tipo: v.isRevisitada ? 'Visita e Revisita' : 'Visita',
-          Loja: l ? l.nome : '—',
-          Código: l ? l.codigo : '—',
-          Regional: l ? l.regional : '—',
-          Cidade: l ? l.cidade : '—',
-          'Data da Visita': fmtDateBR(v.data),
-          'Hora da Visita': v.hora,
-          Responsável: v.usuario,
-          Status: v.isRevisitada ? 'REALIZADA E REVISITADA' : (v.status || '—'),
-          'Comentários da Visita': v.comentario || '—',
-          'Data da Revisita': v.isRevisitada ? fmtDateBR(v.dataRevisita) : '—',
-          'Hora da Revisita': v.isRevisitada ? v.horaRevisita : '—',
-          'Observações da Revisita': v.isRevisitada ? (v.comentarioRevisita || '—') : '—',
-          'Fotos Anexas Visita': v.temFotos ? 'Sim' : 'Não',
-          'Fotos Anexas Revisita': v.isRevisitada ? (v.temFotosRevisita ? 'Sim' : 'Não') : '—',
-          GPS: v.gps ? `${v.gps.lat.toFixed(5)}, ${v.gps.lng.toFixed(5)}` : '—'
-        };
+        const l = findLoja(v.lojaId);
+        if (v.type === 'revisita') {
+          return {
+            Tipo: 'Revisita',
+            Loja: l ? l.nome : '—',
+            Código: l ? l.codigo : '—',
+            Regional: l ? l.regional : '—',
+            Cidade: l ? l.cidade : '—',
+            'Data da Visita': '—',
+            'Hora da Visita': '—',
+            Responsável: v.usuario,
+            Status: 'CONCLUÍDA',
+            'Comentários da Visita': '—',
+            'Data da Revisita': fmtDateBR(v.data),
+            'Hora da Revisita': v.hora,
+            'Observações da Revisita': v.comentario || '—',
+            'Fotos Anexas Visita': '—',
+            'Fotos Anexas Revisita': v.temFotos ? 'Sim' : 'Não',
+            GPS: '—'
+          };
+        } else {
+          return {
+            Tipo: v.isRevisitada ? 'Visita e Revisita' : 'Visita',
+            Loja: l ? l.nome : '—',
+            Código: l ? l.codigo : '—',
+            Regional: l ? l.regional : '—',
+            Cidade: l ? l.cidade : '—',
+            'Data da Visita': fmtDateBR(v.data),
+            'Hora da Visita': v.hora,
+            Responsável: v.usuario,
+            Status: v.isRevisitada ? 'REALIZADA E REVISITADA' : (v.status || '—'),
+            'Comentários da Visita': v.comentario || '—',
+            'Data da Revisita': v.isRevisitada ? fmtDateBR(v.dataRevisita) : '—',
+            'Hora da Revisita': v.isRevisitada ? v.horaRevisita : '—',
+            'Observações da Revisita': v.isRevisitada ? (v.comentarioRevisita || '—') : '—',
+            'Fotos Anexas Visita': v.temFotos ? 'Sim' : 'Não',
+            'Fotos Anexas Revisita': v.isRevisitada ? (v.temFotosRevisita ? 'Sim' : 'Não') : '—',
+            GPS: v.gps ? `${v.gps.lat.toFixed(5)}, ${v.gps.lng.toFixed(5)}` : '—'
+          };
+        }
       });
     } else if (activeTab === 'planejadas') {
       sheetName = 'Visitas Planejadas';
       dataToExport = getFilteredPlanos().map((p) => {
-        const l = lojas.find((x) => x.id === p.lojaId);
+        const l = findLoja(p.lojaId);
         return {
           Loja: l ? l.nome : '—',
           Código: l ? l.codigo : '—',
@@ -208,7 +254,7 @@ export default function RelatoriosView({
     } else if (activeTab === 'revisitas') {
       sheetName = 'Revisitas Técnicas';
       dataToExport = getFilteredRevisitas().map((r) => {
-        const l = lojas.find((x) => x.id === r.lojaId);
+        const l = findLoja(r.lojaId);
         return {
           Loja: l ? l.nome : '—',
           Código: l ? l.codigo : '—',
@@ -242,15 +288,24 @@ export default function RelatoriosView({
     window.print();
   };
 
+  const isSameLoja = (idA: string, idB: string) => {
+    if (!idA || !idB) return false;
+    const cleanA = String(idA).trim().toLowerCase().replace('loja_', '');
+    const cleanB = String(idB).trim().toLowerCase().replace('loja_', '');
+    return cleanA === cleanB || idA === idB;
+  };
+
   // Filter builders for standard visits and completed revisits combined
   const getFilteredRealizadas = () => {
     const combined: any[] = [];
+    const visitedOriginalIds = new Set<string>();
     
     // Add standard visits
     visitas.forEach((v) => {
+      visitedOriginalIds.add(v.id);
       // Find completed revisits for this specific visit
       const associatedRevisitas = (revisitas || []).filter(
-        (r) => r.visitaOriginalId === v.id && r.concluida
+        (r) => (r.visitaOriginalId === v.id || (isSameLoja(r.lojaId, v.lojaId) && r.concluida && (r.dataRealizada || '') >= v.data)) && r.concluida
       );
       const isRevisitada = associatedRevisitas.length > 0;
       const latestRevisita = isRevisitada
@@ -285,9 +340,9 @@ export default function RelatoriosView({
       });
     });
 
-    // Add completed revisits as separate entries on their actual date of execution
+    // Only add orphan completed revisits (not associated with any standard visit in the list)
     (revisitas || []).forEach((r) => {
-      if (r.concluida) {
+      if (r.concluida && r.visitaOriginalId && !visitedOriginalIds.has(r.visitaOriginalId)) {
         combined.push({
           id: `realizada_revisita_${r.id}`,
           lojaId: r.lojaId,
@@ -302,7 +357,7 @@ export default function RelatoriosView({
           type: 'revisita',
           fotos: r.fotos || [],
 
-          isRevisitada: false, // It is the revisit itself
+          isRevisitada: false,
           revisitaId: r.id,
           dataRevisita: r.dataRealizada || '',
           horaRevisita: r.horaRealizada || '',
@@ -324,7 +379,7 @@ export default function RelatoriosView({
     }
     if (regional) {
       list = list.filter((v) => {
-        const l = lojas.find((x) => x.id === v.lojaId);
+        const l = findLoja(v.lojaId);
         return l && l.regional === regional;
       });
     }
@@ -342,7 +397,7 @@ export default function RelatoriosView({
     }
     if (regional) {
       list = list.filter((v) => {
-        const l = lojas.find((x) => x.id === v.lojaId);
+        const l = findLoja(v.lojaId);
         return l && l.regional === regional;
       });
     }
@@ -365,7 +420,7 @@ export default function RelatoriosView({
     }
     if (regional) {
       list = list.filter((v) => {
-        const l = lojas.find((x) => x.id === v.lojaId);
+        const l = findLoja(v.lojaId);
         return l && l.regional === regional;
       });
     }
@@ -384,13 +439,13 @@ export default function RelatoriosView({
     );
   };
 
-  const selectedHistoryLoja = lojas.find((l) => l.id === selectedHistoryLojaId);
+  const selectedHistoryLoja = findLoja(selectedHistoryLojaId);
 
   // Combine and sort chronological timeline for a specific store
   const getSelectedStoreTimeline = (lojaId: string) => {
-    const sVisits = visitas.filter((v) => v.lojaId === lojaId);
-    const sRevisitas = revisitas.filter((r) => r.lojaId === lojaId);
-    const sPlanos = (planos || []).filter((p) => p.lojaId === lojaId && !p.concluido);
+    const sVisits = visitas.filter((v) => matchLojaId(v.lojaId, lojaId));
+    const sRevisitas = revisitas.filter((r) => matchLojaId(r.lojaId, lojaId));
+    const sPlanos = (planos || []).filter((p) => matchLojaId(p.lojaId, lojaId) && !p.concluido);
 
     const mappedVisits = sVisits.map((v) => ({
       id: v.id,
@@ -415,7 +470,7 @@ export default function RelatoriosView({
       usuario: r.usuario,
       data: r.concluida ? (r.dataRealizada || r.dataPlanejada) : r.dataPlanejada,
       hora: r.concluida ? (r.horaRealizada || '00:00') : '00:00',
-      status: r.concluida ? 'Revisita Concluída' : 'Revisita Agendada (Pendente)',
+      status: r.concluida ? 'Retorno Concluído' : 'Retorno Agendado (Pendente)',
       comentario: r.concluida ? (r.novasObservacoes || '') : 'Retorno para auditoria de desvios e conformidade.',
       temFotos: !!r.temFotos,
       gps: null as { lat: number; lng: number } | null,
@@ -457,7 +512,7 @@ export default function RelatoriosView({
             Relatórios e Fluxo de Visitas
           </h1>
           <p className="text-sm text-ink-soft mt-1.5 no-print">
-            Audite as auditorias planejadas, execute as revisitas operacionais e visualize dossiês completos por filial.
+            Audite as auditorias planejadas, execute os retornos operacionais e visualize dossiês completos por filial.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 no-print">
@@ -490,7 +545,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          ✅ Realizadas ({visitas.length + (revisitas || []).filter((r) => r.concluida).length})
+          ✅ Realizadas ({getFilteredRealizadas().length})
         </button>
         <button
           onClick={() => setActiveTab('planejadas')}
@@ -500,7 +555,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          📅 Planejadas ({planos.filter((p) => !p.concluido).length})
+          📅 Planejadas ({getFilteredPlanos().length})
         </button>
         <button
           onClick={() => setActiveTab('revisitas')}
@@ -510,7 +565,7 @@ export default function RelatoriosView({
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          🔄 Revisitas ({revisitas.filter((r) => !r.concluida).length})
+          🔄 Retornos ({getFilteredRevisitas().length})
         </button>
         <button
           onClick={() => setActiveTab('historico')}
@@ -597,7 +652,7 @@ export default function RelatoriosView({
                 onChange={(e: any) => setRevisitaStatus(e.target.value)}
                 className="px-3 py-1.5 border border-line rounded-lg text-xs outline-none focus:border-brand-accent bg-card text-ink"
               >
-                <option value="todos">Todas as Revisitas</option>
+                <option value="todos">Todos os Retornos</option>
                 <option value="pendentes">Pendentes (Em Aberto)</option>
                 <option value="concluidos">Finalizadas</option>
               </select>
@@ -631,7 +686,7 @@ export default function RelatoriosView({
               <tbody className="divide-y divide-line text-ink leading-relaxed">
                 {getFilteredRealizadas().length > 0 ? (
                   getFilteredRealizadas().map((v) => {
-                    const l = lojas.find((x) => x.id === v.lojaId);
+                    const l = findLoja(v.lojaId);
                     return (
                       <tr key={v.id} className="hover:bg-paper/25 transition-colors group">
                         <td 
@@ -654,7 +709,7 @@ export default function RelatoriosView({
                             {v.isRevisitada && (
                               <div className="text-[10px] text-indigo-650 font-bold mt-1 flex items-center gap-1">
                                 <span className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" />
-                                Revisitada em {fmtDateBR(v.dataRevisita)} às {v.horaRevisita}
+                                Revisitado em {fmtDateBR(v.dataRevisita)} às {v.horaRevisita}
                               </div>
                             )}
                           </div>
@@ -669,7 +724,7 @@ export default function RelatoriosView({
                                 ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
                                 : 'bg-brand-green-soft border-brand-green/20 text-brand-green'
                             }`}>
-                              {v.type === 'revisita' ? 'Revisita Técnica' : v.isRevisitada ? 'Realizada e Revisitada' : 'Visita'}
+                              {v.type === 'revisita' ? 'Retorno Técnico' : v.isRevisitada ? 'Realizada com Retorno' : 'Visita'}
                             </span>
                             <span className="text-[10px] text-ink-soft font-bold uppercase tracking-wide">
                               {v.status || 'OK'}
@@ -684,7 +739,7 @@ export default function RelatoriosView({
                             
                             {v.isRevisitada && v.comentarioRevisita && (
                               <div className="p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg text-[11px] text-ink-soft mt-1">
-                                <strong className="text-indigo-800 font-bold uppercase text-[9px] tracking-wider block">Constatações da Revisita:</strong>
+                                <strong className="text-indigo-800 font-bold uppercase text-[9px] tracking-wider block">Constatações do Retorno:</strong>
                                 <p className="italic font-medium leading-relaxed mt-0.5">"{v.comentarioRevisita}"</p>
                               </div>
                             )}
@@ -694,7 +749,7 @@ export default function RelatoriosView({
                               <div className="space-y-1.5 mt-2">
                                 <div className="flex flex-wrap gap-1">
                                   <span className="text-[9.5px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wider flex items-center gap-1">
-                                    <span>Checklist da Revisita:</span>
+                                    <span>Checklist do Retorno:</span>
                                     <span className="text-brand-green">{v.pontosMelhoria.filter((p: any) => p.corrigido).length} Corrigidos</span>
                                     <span>/</span>
                                     <span className="text-brand-red">{v.pontosMelhoria.filter((p: any) => !p.corrigido).length} Pendentes</span>
@@ -718,7 +773,7 @@ export default function RelatoriosView({
                                 <div className="space-y-1.5 mt-2">
                                   <div className="flex flex-wrap gap-1">
                                     <span className="text-[9px] bg-brand-red-soft text-brand-red px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wider">
-                                      {v.pendenciasCount} Pendências (Aguardando Revisita)
+                                      {v.pendenciasCount} Pendências (Aguardando Retorno)
                                     </span>
                                   </div>
                                   <ul className="text-[11px] list-disc list-inside space-y-0.5 text-ink-soft bg-paper/40 p-2 rounded-lg max-w-xs border border-line/40">
@@ -744,7 +799,7 @@ export default function RelatoriosView({
 
                             {v.isRevisitada && v.temFotosRevisita && onViewPhoto && (
                               <div className="mt-1.5">
-                                <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider block mb-0.5">Fotos da Revisita:</span>
+                                <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider block mb-0.5">Fotos do Retorno:</span>
                                 <RevisitaPhotosRenderer revisitaId={v.revisitaId} initialPhotos={v.fotosRevisita} onViewPhoto={onViewPhoto} />
                               </div>
                             )}
@@ -756,7 +811,7 @@ export default function RelatoriosView({
                               <button
                                 onClick={() => onExcluirRevisita(v.revisitaId)}
                                 className="p-1.5 border border-brand-red text-brand-red bg-card hover:bg-brand-red-soft rounded-lg transition-colors cursor-pointer"
-                                title="Excluir revisita realizada"
+                                title="Excluir retorno realizado"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -767,10 +822,10 @@ export default function RelatoriosView({
                                   <button
                                     onClick={() => onExcluirRevisita(v.revisitaId)}
                                     className="p-1.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
-                                    title="Excluir apenas o registro de revisita"
+                                    title="Excluir apenas o registro de retorno"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
-                                    <span className="text-[10px]">Excluir Revisita</span>
+                                    <span className="text-[10px]">Excluir Retorno</span>
                                   </button>
                                 )}
                                 {onExcluirVisita && (
@@ -794,7 +849,7 @@ export default function RelatoriosView({
                     <td colSpan={7} className="p-12 text-center text-ink-soft">
                       <div className="flex flex-col items-center justify-center">
                         <Search className="w-8 h-8 text-ink-faint mb-2 stroke-[1.5]" />
-                        <span className="text-xs font-semibold">Nenhuma visita ou revisita realizada encontrada com estes filtros.</span>
+                        <span className="text-xs font-semibold">Nenhuma visita ou retorno realizado encontrado com estes filtros.</span>
                       </div>
                     </td>
                   </tr>
@@ -823,7 +878,7 @@ export default function RelatoriosView({
               <tbody className="divide-y divide-line text-ink leading-relaxed">
                 {getFilteredPlanos().length > 0 ? (
                   getFilteredPlanos().map((p) => {
-                    const l = lojas.find((x) => x.id === p.lojaId);
+                    const l = findLoja(p.lojaId);
                     return (
                       <tr 
                         key={p.id} 
@@ -914,7 +969,7 @@ export default function RelatoriosView({
               <tbody className="divide-y divide-line text-ink leading-relaxed">
                 {getFilteredRevisitas().length > 0 ? (
                   getFilteredRevisitas().map((r) => {
-                    const l = lojas.find((x) => x.id === r.lojaId);
+                    const l = findLoja(r.lojaId);
                     const totalPendencias = r.pontosMelhoria.length;
                     const resolvidas = r.pontosMelhoria.filter((p) => p.corrigido).length;
 
@@ -1009,18 +1064,18 @@ export default function RelatoriosView({
                             {!r.concluida && onOpenRevisitaModal && (
                               <button
                                 onClick={() => onOpenRevisitaModal(r)}
-                                className="px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-[10.5px] font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
-                                title="Registrar auditoria de revisita"
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10.5px] font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                                title="Registrar auditoria de retorno técnico"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
-                                Registrar Revisita
+                                Registrar Retorno
                               </button>
                             )}
                             {canExcluir && onExcluirRevisita && (
                               <button
                                 onClick={() => onExcluirRevisita(r.id)}
                                 className="p-1.5 border border-line text-ink-soft hover:bg-paper rounded-lg transition-colors cursor-pointer"
-                                title="Deletar revisita"
+                                title="Deletar retorno"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1035,9 +1090,9 @@ export default function RelatoriosView({
                     <td colSpan={7} className="p-12 text-center text-ink-soft">
                       <div className="flex flex-col items-center justify-center">
                         <RefreshCw className="w-8 h-8 text-ink-faint mb-2 stroke-[1.5]" />
-                        <span className="text-xs font-semibold">Nenhuma revisita técnica registrada.</span>
+                        <span className="text-xs font-semibold">Nenhum retorno técnico registrado.</span>
                         <p className="text-[11px] text-ink-soft mt-1">
-                          Conclua visitas com desvios/pendências para que o sistema agende revisitas automaticamente.
+                          Conclua visitas com desvios/pendências para que o sistema agende retornos automaticamente.
                         </p>
                       </div>
                     </td>
@@ -1144,7 +1199,7 @@ export default function RelatoriosView({
                         const isClosed = item.status === 'Loja fechada / não atendeu';
 
                         const statusDotColor = isRevisita
-                          ? (item.concluida ? 'bg-indigo-650' : 'bg-slate-400')
+                          ? (item.concluida ? 'bg-indigo-600' : 'bg-slate-400')
                           : isPlano
                           ? 'bg-sky-500'
                           : (isOK ? 'bg-brand-green' : isClosed ? 'bg-brand-red' : 'bg-brand-amber');

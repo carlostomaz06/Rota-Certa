@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { Loja, User, Visita, Plano, Config, Revisita, RevisitaPonto } from './types';
 import { INITIAL_LOJAS, INITIAL_USERS, STATUS_OPCOES } from './data';
-import { todayISO, nowTimeStr, fileToCompressedDataURL } from './utils';
+import { todayISO, nowTimeStr, fileToCompressedDataURL, matchLojaId, normalizeLojaId } from './utils';
+import { calculateStoreStatus } from './utils/storeStatus';
 import {
   seedDatabaseIfEmpty,
   subscribeToCollection,
@@ -36,7 +37,7 @@ import ConfigView from './components/ConfigView';
 import Modal from './components/Modal';
 
 // Icons
-import { Camera, MapPin, Eye, EyeOff, AlertTriangle, Search } from 'lucide-react';
+import { Camera, MapPin, Eye, EyeOff, AlertTriangle, Search, Check, RefreshCw } from 'lucide-react';
 
 export default function App() {
   // Authentication State
@@ -287,6 +288,120 @@ export default function App() {
     };
   }, []);
 
+  // Self-healing effect: Ensure that any existing visits get a Retorno scheduled automatically without past dates.
+  // Also auto-reprogram lingering past retornos and deduplicate duplicate pending retornos for the same store.
+  useEffect(() => {
+    if (visitas.length === 0 || lojas.length === 0) return;
+
+    let updated = false;
+    let currentRevisitas = [...revisitas];
+    const hojeStr = todayISO();
+
+    // 0. Deduplicate duplicate pending retornos for the same store
+    const pendingByStore: { [key: string]: Revisita[] } = {};
+    currentRevisitas.forEach((r) => {
+      if (!r.concluida) {
+        const normKey = normalizeLojaId(r.lojaId);
+        if (!pendingByStore[normKey]) pendingByStore[normKey] = [];
+        pendingByStore[normKey].push(r);
+      }
+    });
+
+    const idsToRemove = new Set<string>();
+    Object.values(pendingByStore).forEach((group) => {
+      if (group.length > 1) {
+        // Sort group to keep the best one (prefer ones with more pontosMelhoria or newer ID)
+        group.sort((a, b) => {
+          const countA = a.pontosMelhoria?.length || 0;
+          const countB = b.pontosMelhoria?.length || 0;
+          if (countB !== countA) return countB - countA;
+          return b.id.localeCompare(a.id);
+        });
+        // Keep group[0], mark others for removal
+        for (let i = 1; i < group.length; i++) {
+          idsToRemove.add(group[i].id);
+          deleteRevisitaFromFirestore(group[i].id).catch(console.error);
+        }
+      }
+    });
+
+    if (idsToRemove.size > 0) {
+      currentRevisitas = currentRevisitas.filter((r) => !idsToRemove.has(r.id));
+      updated = true;
+    }
+
+    // 1. Reprogram past pending retornos to today so they remain active and due
+    currentRevisitas = currentRevisitas.map((r) => {
+      if (r.concluida) return r;
+
+      if (r.dataPlanejada < hojeStr) {
+        updated = true;
+        const reprogrammed = { ...r, dataPlanejada: hojeStr };
+        saveRevisitaToFirestore(reprogrammed).catch(console.error);
+        return reprogrammed;
+      }
+
+      return r;
+    });
+
+    // 2. Generate Retorno for any visit if no Retorno exists yet for that visit AND no pending Retorno exists for that store
+    visitas.forEach((v) => {
+      const storeNormId = normalizeLojaId(v.lojaId);
+      const hasRevisitaForVisit = currentRevisitas.some((r) => r.visitaOriginalId === v.id);
+      const hasPendingRevisitaForStore = currentRevisitas.some(
+        (r) => !r.concluida && matchLojaId(r.lojaId, storeNormId)
+      );
+
+      if (!hasRevisitaForVisit && !hasPendingRevisitaForStore) {
+        const l = lojas.find((store) => matchLojaId(store.id, storeNormId));
+        const prazoDias = l?.prazo || config.prazoPadrao || 15;
+        let dataRevisita = hojeStr;
+        try {
+          const baseDate = new Date(v.data + 'T12:00:00');
+          baseDate.setDate(baseDate.getDate() + prazoDias);
+          const calculatedStr = baseDate.toISOString().split('T')[0];
+          dataRevisita = calculatedStr < hojeStr ? hojeStr : calculatedStr;
+        } catch (e) {
+          dataRevisita = hojeStr;
+        }
+
+        const isOkStatus = v.status === 'OK - Sem pendências' || v.status === 'OK';
+        const hasPendenciasList = v.pendencias && v.pendencias.length > 0;
+        let devList: string[] = [];
+        if (hasPendenciasList) {
+          devList = v.pendencias!;
+        } else if (!isOkStatus && v.status) {
+          devList = [v.status];
+        } else {
+          devList = ['Acompanhamento de rotina e verificação de padrões'];
+        }
+
+        const healingRevisita: Revisita = {
+          id: `revisita_auto_${v.id}`,
+          visitaOriginalId: v.id,
+          lojaId: storeNormId,
+          usuario: v.usuario || 'Supervisor',
+          dataPlanejada: dataRevisita,
+          concluida: false,
+          pontosMelhoria: devList.map((p) => ({
+            descricao: p,
+            corrigido: false,
+          })),
+          observacoesOriginais: v.comentario || `Retorno de rotina agendado pós visita realizada em ${v.data}`,
+          temFotos: false,
+        };
+
+        currentRevisitas.push(healingRevisita);
+        saveRevisitaToFirestore(healingRevisita).catch(console.error);
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      saveRevisitasToStorage(currentRevisitas);
+    }
+  }, [visitas, revisitas, lojas, config.prazoPadrao]);
+
   // Sync state changes to local storage when updated
   const saveLojasToStorage = (updatedLojas: Loja[]) => {
     const cleanLojas = updatedLojas.filter(l => l.filial !== '6' && l.filial !== '28' && l.id !== 'loja_6' && l.id !== 'loja_28');
@@ -389,19 +504,8 @@ export default function App() {
   const getAlertCount = () => {
     const hojeStr = todayISO();
     return lojas.filter((l) => {
-      const lVisitas = visitas
-        .filter((v) => v.lojaId === l.id)
-        .sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
-
-      if (lVisitas.length === 0) return false; // never visited is not technically 'atrasada', it's pending
-      const ultima = lVisitas[0];
-      const prazo = l.prazo || config.prazoPadrao;
-      const proximaDate = new Date(ultima.data);
-      proximaDate.setDate(proximaDate.getDate() + prazo);
-
-      const diffTime = proximaDate.getTime() - new Date(hojeStr).getTime();
-      const dias = Math.round(diffTime / (1000 * 60 * 60 * 24));
-      return dias < 0;
+      const info = calculateStoreStatus(l, visitas, revisitas, planos, hojeStr);
+      return info.status === 'atrasada';
     }).length;
   };
 
@@ -647,17 +751,30 @@ export default function App() {
       console.error('Error saving visit to Firestore:', err);
     }
 
-    // Check off scheduled planning if associated
-    const basePlanos = associatedPlanoId
-      ? planos.map((p) => {
-          if (p.id === associatedPlanoId) {
-            const updatedP = { ...p, concluido: true };
-            savePlanoToFirestore(updatedP).catch(console.error);
-            return updatedP;
-          }
-          return p;
-        })
-      : planos;
+    // Check off scheduled planning if associated OR find any pending planning for this store on or before this date
+    let updatedPlanoIds = new Set<string>();
+    if (associatedPlanoId) {
+      updatedPlanoIds.add(associatedPlanoId);
+    } else {
+      // Find the most relevant pending plan for this store on or before the visit date, or any pending plan if none
+      const matchingPlan = planos.find(
+        (p) => matchLojaId(p.lojaId, selectedLojaForVisita.id) && !p.concluido && p.data <= vData
+      ) || planos.find(
+        (p) => matchLojaId(p.lojaId, selectedLojaForVisita.id) && !p.concluido
+      );
+      if (matchingPlan) {
+        updatedPlanoIds.add(matchingPlan.id);
+      }
+    }
+
+    const basePlanos = planos.map((p) => {
+      if (updatedPlanoIds.has(p.id)) {
+        const updatedP = { ...p, concluido: true };
+        savePlanoToFirestore(updatedP).catch(console.error);
+        return updatedP;
+      }
+      return p;
+    });
 
     // Automatically calculate future revisit date (periodicity)
     const prazoDias = selectedLojaForVisita.prazo || config.prazoPadrao || 15;
@@ -672,22 +789,58 @@ export default function App() {
       dataRevisita = baseDate.toISOString().split('T')[0];
     }
 
-    // Only schedule an automatic Revisita if there are actual deviations/pendencies
+    // Schedule an automatic Revisita/Retorno after the store's periodicity deadline
     let finalRevisitasList = [...revisitas];
-    if (vPendencias.length > 0) {
+    const isOkStatus = vStatus === 'OK - Sem pendências' || vStatus === 'OK';
+    const effectivePendencias = [...vPendencias];
+    if (effectivePendencias.length === 0) {
+      if (!isOkStatus && vStatus) {
+        effectivePendencias.push(vStatus);
+      } else {
+        effectivePendencias.push('Acompanhamento de rotina e verificação de padrões');
+      }
+    }
+
+    const normStoreId = normalizeLojaId(selectedLojaForVisita.id);
+    const existingPending = finalRevisitasList.find(
+      (r) => !r.concluida && matchLojaId(r.lojaId, normStoreId)
+    );
+
+    if (existingPending) {
+      // Update existing pending retorno instead of creating a duplicate
+      const updatedRevisita: Revisita = {
+        ...existingPending,
+        visitaOriginalId: newVisita.id,
+        dataPlanejada: dataRevisita,
+        usuario: usuarioStr,
+        pontosMelhoria: effectivePendencias.map((p) => ({
+          descricao: p,
+          corrigido: false,
+        })),
+        observacoesOriginais: vComentario.trim() || `Retorno agendado pós visita realizada em ${vData} (${vStatus})`,
+      };
+      finalRevisitasList = finalRevisitasList.map((r) =>
+        r.id === existingPending.id ? updatedRevisita : r
+      );
+      try {
+        await saveRevisitaToFirestore(updatedRevisita);
+      } catch (err) {
+        console.error('Error updating revisit in Firestore:', err);
+      }
+    } else {
       // Create automatic Revisita Pendente
       const newRevisita: Revisita = {
         id: `revisita_${Date.now()}`,
         visitaOriginalId: newVisita.id,
-        lojaId: selectedLojaForVisita.id,
+        lojaId: normStoreId,
         usuario: usuarioStr,
         dataPlanejada: dataRevisita,
         concluida: false,
-        pontosMelhoria: vPendencias.map((p) => ({
+        pontosMelhoria: effectivePendencias.map((p) => ({
           descricao: p,
           corrigido: false,
         })),
-        observacoesOriginais: vComentario.trim() || 'Visita concluída.',
+        observacoesOriginais: vComentario.trim() || `Retorno agendado pós visita realizada em ${vData} (${vStatus})`,
         temFotos: false,
       };
 
@@ -699,23 +852,6 @@ export default function App() {
       }
     }
 
-    // Also, mark any older pending revisits for this store as completed because they are superseded by this new standard visit
-    finalRevisitasList = finalRevisitasList.map((r) => {
-      if (r.lojaId === selectedLojaForVisita.id && !r.concluida) {
-        const updatedR = {
-          ...r,
-          concluida: true,
-          dataRealizada: vData,
-          horaRealizada: vHora,
-          novasObservacoes: `Resolvida por visita subsequente em ${vData}.`,
-        };
-        // Update in Firestore
-        saveRevisitaToFirestore(updatedR).catch(console.error);
-        return updatedR;
-      }
-      return r;
-    });
-
     saveRevisitasToStorage(finalRevisitasList);
 
     savePlanosToStorage(basePlanos);
@@ -724,10 +860,10 @@ export default function App() {
     setVisitaFormOpen(false);
     setRelatoriosActiveTab('realizadas');
     navigateTo('relatorios');
-    if (vPendencias.length > 0) {
-      triggerToast('Relatório de visita gravado e revisita agendada automaticamente!');
+    if (effectivePendencias.length > 0) {
+      triggerToast('Relatório de visita gravado e retorno técnico agendado automaticamente!');
     } else {
-      triggerToast('Relatório de visita gravado com sucesso! (Nenhum desvio checklist encontrado)');
+      triggerToast('Relatório de visita gravado com sucesso!');
     }
   };
 
@@ -752,7 +888,11 @@ export default function App() {
     }
 
     // Automatically create a corresponding Revisita as per Step 3!
-    const originalVisita = visitas[visitas.length - 1] || null;
+    // Find the most recent visit of that specific store to get its checklist pendencies
+    const storeVisits = visitas
+      .filter((v) => matchLojaId(v.lojaId, returnLojaId))
+      .sort((a, b) => b.data.localeCompare(a.data));
+    const originalVisita = storeVisits[0] || null;
     const newRevisita: Revisita = {
       id: `revisita_${Date.now()}`,
       visitaOriginalId: originalVisita ? originalVisita.id : '',
@@ -775,7 +915,7 @@ export default function App() {
     }
 
     setReturnModalOpen(false);
-    triggerToast('Agendamento de retorno e revisita automática gravados!');
+    triggerToast('Agendamento de retorno técnico gravado com sucesso!');
 
     setRelatoriosActiveTab('realizadas');
     navigateTo('relatorios');
@@ -844,15 +984,27 @@ export default function App() {
     }
 
     saveRevisitasToStorage(baseRevisitas);
+
+    // Also automatically mark any pending standard planned visits (Planos) for this store as completed
+    const updatedPlanos = planos.map((p) => {
+      if (matchLojaId(p.lojaId, selectedRevisita.lojaId) && !p.concluido && p.data <= revData) {
+        const updatedP = { ...p, concluido: true };
+        savePlanoToFirestore(updatedP).catch(console.error);
+        return updatedP;
+      }
+      return p;
+    });
+    savePlanosToStorage(updatedPlanos);
+
     try {
       await saveRevisitaToFirestore(updatedRevisitaObj);
     } catch (err) {
       console.error('Error saving revisit execution to Firestore:', err);
     }
     setRevisitaFormOpen(false);
-    setRelatoriosActiveTab('realizadas');
+    setRelatoriosActiveTab('revisitas');
     navigateTo('relatorios');
-    triggerToast('Revisita finalizada com sucesso e registrada no histórico!');
+    triggerToast('Retorno técnico finalizado com sucesso e registrado no histórico!');
   };
 
   const handleExcluirRevisita = (id: string) => {
@@ -861,8 +1013,8 @@ export default function App() {
       return;
     }
     requestConfirmation(
-      'Excluir Revisita',
-      'Deseja realmente excluir esta revisita? Esta ação é irreversível.',
+      'Excluir Retorno',
+      'Deseja realmente excluir este retorno? Esta ação é irreversível.',
       async () => {
         const updated = revisitas.filter((r) => r.id !== id);
         saveRevisitasToStorage(updated);
@@ -872,7 +1024,7 @@ export default function App() {
         } catch (err) {
           console.error('Error deleting revisit from Firestore:', err);
         }
-        triggerToast('Revisita excluída com sucesso.');
+        triggerToast('Retorno excluído com sucesso.');
       }
     );
   };
@@ -887,7 +1039,7 @@ export default function App() {
 
     try {
       await saveRevisitaToFirestore(updatedRevisitaObj);
-      triggerToast('Data da revisita reprogramada com sucesso!');
+      triggerToast('Data do retorno reprogramada com sucesso!');
     } catch (err) {
       console.error('Error updating revisit date in Firestore:', err);
       triggerToast('Erro ao atualizar data no banco de dados.');
@@ -1831,7 +1983,7 @@ export default function App() {
               {/* Pontos de Melhoria / Pendências */}
               <div className="flex flex-col gap-1 bg-paper/20 border border-line/60 rounded-xl p-3 space-y-2">
                 <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider block">
-                  Lista de Pendências / Pontos de Melhoria (Checklist para Revisita)
+                  Lista de Pendências / Pontos de Melhoria (Checklist para Retorno Técnico)
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -2232,7 +2384,7 @@ export default function App() {
       <Modal
         isOpen={revisitaFormOpen}
         onClose={() => setRevisitaFormOpen(false)}
-        title="Executar Revisita Técnica"
+        title="Auditoria de Retorno Técnico"
         footer={
           <>
             <button
@@ -2243,15 +2395,27 @@ export default function App() {
             </button>
             <button
               onClick={handleSaveRevisitaExecution}
-              className="px-4.5 py-2 bg-brand-green hover:bg-brand-green/95 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer active:scale-95 shadow-md"
+              className="px-4.5 py-2 bg-brand-green hover:bg-brand-green/95 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5"
             >
-              Finalizar Revisita
+              <Check className="w-4 h-4" />
+              Finalizar Retorno Técnico
             </button>
           </>
         }
       >
         {selectedRevisita && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Re-inspection Notice */}
+            <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                <RefreshCw className="w-4 h-4 text-indigo-600" />
+                <span>Re-inspeção Completa da Loja (Retorno Operacional)</span>
+              </div>
+              <p className="text-[11px] text-indigo-800 leading-relaxed">
+                Este retorno técnico abrange a re-auditoria de toda a filial. Confirme a solução dos pontos críticos anteriores e registre o parecer final da loja.
+              </p>
+            </div>
+
             {/* Previous Visit Summary Panel */}
             <div className="p-3.5 bg-paper rounded-xl border border-line space-y-2.5">
               <h4 className="text-[11px] font-bold text-ink-soft uppercase tracking-wider">
@@ -2284,7 +2448,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
-                  Data da Revisita
+                  Data do Retorno
                 </label>
                 <input
                   type="date"
@@ -2295,7 +2459,7 @@ export default function App() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
-                  Hora
+                  Hora do Retorno
                 </label>
                 <input
                   type="time"
@@ -2306,11 +2470,19 @@ export default function App() {
               </div>
             </div>
 
-            {/* Verification of previous desvios / checklist items */}
+            {/* Verification of previous desvios / checklist items with Live score */}
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
-                Checklist: Pontos Identificados Corrigidos? *
-              </label>
+              <div className="flex items-center justify-between text-xs font-bold text-ink">
+                <span className="text-[10px] text-ink-soft uppercase tracking-wider">
+                  Checklist: Pontos Identificados Corrigidos? *
+                </span>
+                {revPontosMelhoria.length > 0 && (
+                  <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold">
+                    {revPontosMelhoria.filter((p) => p.corrigido).length} de {revPontosMelhoria.length} Corrigidos (
+                    {Math.round((revPontosMelhoria.filter((p) => p.corrigido).length / revPontosMelhoria.length) * 100)}% Regularizado)
+                  </span>
+                )}
+              </div>
               {revPontosMelhoria.length > 0 ? (
                 <div className="border border-line rounded-xl divide-y divide-line overflow-hidden bg-card">
                   {revPontosMelhoria.map((p, index) => (
@@ -2355,7 +2527,7 @@ export default function App() {
                 </div>
               ) : (
                 <p className="text-xs text-ink-faint italic bg-paper/40 border border-line p-3 rounded-lg">
-                  Nenhum desvio específico listado para conferência. Você pode registrar as correções nas observações abaixo.
+                  Nenhum desvio específico listado para conferência. Você pode registrar as correções e parecer do retorno abaixo.
                 </p>
               )}
             </div>
@@ -2369,7 +2541,7 @@ export default function App() {
                 value={revObservacoes}
                 onChange={(e) => setRevObservacoes(e.target.value)}
                 rows={3}
-                placeholder="Descreva o status atual, se as pendências foram sanadas ou se novas ações são requeridas..."
+                placeholder="Descreva o parecer do retorno, se a loja passou por re-inspeção completa e se todas as irregularidades foram sanadas..."
                 className="px-3 py-2 border border-line rounded-lg text-xs outline-none focus:border-brand-accent bg-paper/30 text-ink"
               />
             </div>
@@ -2377,12 +2549,12 @@ export default function App() {
             {/* Attachment for Revisit photos */}
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold text-ink-soft uppercase tracking-wider">
-                Novas Fotos da Revisita
+                Novas Fotos do Retorno
               </label>
               <div className="flex flex-wrap gap-2 mt-1">
                 {revPendingPhotos.map((src, i) => (
                   <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-line shadow-xs flex-shrink-0">
-                    <img src={src} className="w-full h-full object-cover" alt="Anexo revisita" />
+                    <img src={src} className="w-full h-full object-cover" alt="Anexo retorno" />
                     <button
                       type="button"
                       onClick={() => handleRemovePendingPhotoRevisita(i)}

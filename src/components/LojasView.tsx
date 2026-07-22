@@ -3,6 +3,7 @@ import { Loja, Visita, Plano, Revisita } from '../types';
 import { Search, Plus } from 'lucide-react';
 import LojaMiniCard from './LojaMiniCard';
 import { todayISO } from '../utils';
+import { calculateStoreStatus } from '../utils/storeStatus';
 
 interface LojasViewProps {
   lojas: Loja[];
@@ -37,55 +38,7 @@ export default function LojasView({
 
   // Helper to compute status for each store
   const getStatusInfo = (loja: Loja) => {
-    const standardVisits = visitas
-      .filter((v) => v.lojaId === loja.id)
-      .map((v) => ({ data: v.data, hora: v.hora }));
-
-    const completedRevisitas = (revisitas || [])
-      .filter((r) => r.lojaId === loja.id && r.concluida)
-      .map((r) => ({ data: r.dataRealizada || r.dataPlanejada, hora: r.horaRealizada || '12:00' }));
-
-    const allVisits = [...standardVisits, ...completedRevisitas].sort((a, b) =>
-      (b.data + b.hora).localeCompare(a.data + a.hora)
-    );
-
-    const proximoPlano = planos
-      .filter((p) => p.lojaId === loja.id && !p.concluido && p.data >= hoje)
-      .sort((a, b) => a.data.localeCompare(b.data))[0];
-    const proximaData = proximoPlano ? proximoPlano.data : null;
-
-    if (allVisits.length === 0) {
-      return { 
-        status: 'nunca' as const, 
-        diasRestantes: null, 
-        ultimaVisita: null,
-        proxima: proximaData 
-      };
-    }
-
-    const ultima = allVisits[0];
-    const prazo = loja.prazo || 15;
-    const proximaDate = new Date(ultima.data);
-    proximaDate.setDate(proximaDate.getDate() + prazo);
-
-    const tToday = new Date(hoje).getTime();
-    const tProxima = proximaDate.getTime();
-    const diffTime = tProxima - tToday;
-    const dias = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-    let status: 'ok' | 'atencao' | 'atrasada' = 'ok';
-    if (dias < 0) {
-      status = 'atrasada';
-    } else if (dias <= 3) {
-      status = 'atencao';
-    }
-
-    return {
-      status,
-      diasRestantes: dias,
-      ultimaVisita: ultima.data,
-      proxima: proximaData,
-    };
+    return calculateStoreStatus(loja, visitas, revisitas, planos, hoje);
   };
 
   // Get list of unique regionals
